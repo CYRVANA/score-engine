@@ -1,13 +1,6 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-/**
- * Server-side Supabase client (Server Components, Server Actions, Route Handlers).
- *
- * Uses the ANON key + the user's auth cookie, so RLS applies.
- * For writes that need to bypass RLS (lead capture, system inserts), use
- * the service-role client below instead.
- */
 export async function createClient() {
   const cookieStore = await cookies();
 
@@ -19,14 +12,13 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options),
             );
           } catch {
-            // The `setAll` method was called from a Server Component.
-            // Safely ignored if you have middleware refreshing user sessions.
+            // Safely ignored when called from a Server Component.
           }
         },
       },
@@ -34,13 +26,6 @@ export async function createClient() {
   );
 }
 
-/**
- * SERVICE-ROLE Supabase client. Bypasses RLS. SERVER-ONLY.
- *
- * Use for: lead capture, session/answer writes, destination delivery worker.
- * Never import this from a client component or expose its responses to the client
- * without filtering by workspace.
- */
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 export function createServiceRoleClient() {
