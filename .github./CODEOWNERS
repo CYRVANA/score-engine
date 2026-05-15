@@ -1,0 +1,8 @@
+# Every change requires review from the repo owner.
+# Replace @your-github-handle with your actual GitHub username when you create the repo.
+
+*       @your-github-handle
+
+# Architecture and data model changes need extra scrutiny.
+/docs/ARCHITECTURE.md       @your-github-handle
+/supabase/migrations/       @your-github-handle
