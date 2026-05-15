@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * CYRVANA brand tokens, mirrored as CSS variables for runtime use.
+ * Source of truth is tailwind.config.ts.
+ */
+@layer base {
+  :root {
+    --brand: #ec6202;
+    --navy: #1a2332;
+    --navy-deep: #0d1117;
+    --background: #ffffff;
+    --foreground: #0d1117;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Tight tracking on display headings — Inter looks crisper this way at large sizes. */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
+  }
+}

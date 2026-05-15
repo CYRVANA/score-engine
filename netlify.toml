@@ -1,0 +1,19 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Force HTTPS and apply the custom domain at deploy time.
+# Set NEXT_PUBLIC_SITE_URL=https://assess.cyrvana.com in Netlify env vars.
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Preview deploys get their own URL and don't need the custom domain.
+[context.deploy-preview.environment]
+  NEXT_PUBLIC_SITE_URL = ""
+
+[context.branch-deploy.environment]
+  NEXT_PUBLIC_SITE_URL = ""
