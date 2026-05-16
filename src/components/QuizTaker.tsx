@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { QuizProgress } from "./QuizProgress";
+import { EmailGate, type LeadFormData } from "./EmailGate";
 import { submitQuiz } from "@/app/q/[slug]/actions";
 
 export type QuizOption = {
@@ -24,20 +25,23 @@ export type QuizData = {
   questions: QuizQuestion[];
 };
 
+/**
+ * Quiz states, in order:
+ *   idle       — user is answering questions
+ *   submitting — submitQuiz Server Action in flight
+ *   gated      — score saved; waiting for email + name + consent
+ *   capturing  — lead capture Server Action in flight (Phase 1.4 wires this up)
+ *   done       — placeholder result card shown
+ *   error      — something failed
+ */
 type SubmitState =
   | { kind: "idle" }
   | { kind: "submitting" }
+  | { kind: "gated"; score: number; tier_title: string | null }
+  | { kind: "capturing"; score: number; tier_title: string | null }
   | { kind: "done"; score: number; tier_title: string | null }
   | { kind: "error"; message: string };
 
-/**
- * Multi-step quiz renderer.
- *
- * Phase 1.2: on Finish, calls submitQuiz Server Action with the session_id +
- * answers. Server recomputes the score authoritatively and returns it.
- *
- * The client only ever sends option_index per question — never points.
- */
 export function QuizTaker({
   quiz,
   sessionId,
@@ -83,7 +87,6 @@ export function QuizTaker({
       return;
     }
 
-    // Convert answers map -> array of submissions (no points sent; server recomputes).
     const submissions = Object.entries(answers).map(([question_id, option_index]) => ({
       question_id,
       option_index,
@@ -93,8 +96,9 @@ export function QuizTaker({
     startTransition(async () => {
       const result = await submitQuiz(sessionId, quiz.id, submissions);
       if (result.ok) {
+        // Phase 1.3: gate before showing results.
         setSubmitState({
-          kind: "done",
+          kind: "gated",
           score: result.score,
           tier_title: result.result_tier?.title ?? null,
         });
@@ -102,6 +106,40 @@ export function QuizTaker({
         setSubmitState({ kind: "error", message: result.error });
       }
     });
+  }
+
+  function handleGateSubmit(data: LeadFormData) {
+    // Phase 1.3 placeholder: client-side honeypot check, then advance.
+    // Phase 1.4 will replace this with a captureLead Server Action call.
+    if (data.honeypot) {
+      // Pretend success — never let bots know they were detected.
+      // (In Phase 1.4 we'll log this attempt server-side.)
+      if (submitState.kind !== "gated") return;
+      setSubmitState({
+        kind: "done",
+        score: submitState.score,
+        tier_title: submitState.tier_title,
+      });
+      return;
+    }
+
+    if (submitState.kind !== "gated") return;
+
+    // Brief simulated delay so the spinner is visible; piece 4 will replace
+    // this with the actual Server Action latency.
+    setSubmitState({
+      kind: "capturing",
+      score: submitState.score,
+      tier_title: submitState.tier_title,
+    });
+    const captured = { score: submitState.score, tier_title: submitState.tier_title };
+    setTimeout(() => {
+      setSubmitState({
+        kind: "done",
+        score: captured.score,
+        tier_title: captured.tier_title,
+      });
+    }, 600);
   }
 
   // --- Render: submitting state ---
@@ -116,6 +154,17 @@ export function QuizTaker({
           <p className="text-base text-muted">Calculating your result...</p>
         </div>
       </main>
+    );
+  }
+
+  // --- Render: email gate ---
+  if (submitState.kind === "gated" || submitState.kind === "capturing") {
+    return (
+      <EmailGate
+        score={submitState.score}
+        onSubmit={handleGateSubmit}
+        isPending={submitState.kind === "capturing"}
+      />
     );
   }
 
@@ -135,9 +184,9 @@ export function QuizTaker({
             <span className="text-base text-muted">points</span>
           </div>
           <p className="mt-6 text-sm leading-relaxed text-muted">
-            <strong className="text-foreground">Phase 1.2 placeholder.</strong> The full
-            results page with the tier description, recommendations, and call-to-action
-            lands in the next deploys. Your answers and score have been saved.
+            <strong className="text-foreground">Phase 1.3 placeholder.</strong> Lead
+            capture wires up in piece 4; the full results page (tier description, CTA,
+            etc.) lands in piece 5. Your score is saved; your email is not yet.
           </p>
         </div>
       </main>
