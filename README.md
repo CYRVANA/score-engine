@@ -8,6 +8,7 @@ Production URL: **https://assess.cyrvana.com** &middot; Status: **Phase 0 scaffo
 
 
 
+
 ## What this is
 
 A small-enterprise quiz funnel: author a scored multi-step assessment, publish it at a branded URL, capture leads at the email gate, ship them to HubSpot (and other destinations via the same adapter pattern). v2 layers Claude-generated personalized results on top.
