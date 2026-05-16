@@ -11,10 +11,10 @@ type RouteParams = Promise<{ slug: string }>;
 type AnswerWithQuestion = {
   points: number;
   value: { option_index: number; option_label: string } | null;
-  questions: {
-    prompt: string;
-    order_index: number;
-  } | null;
+  questions:
+    | { prompt: string; order_index: number }
+    | { prompt: string; order_index: number }[]
+    | null;
 };
 
 /**
