@@ -64,6 +64,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   );
 }
 
+
 function errorMessageFor(code: string | undefined): string | null {
   switch (code) {
     case "not_admin":
