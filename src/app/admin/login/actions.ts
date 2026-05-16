@@ -33,6 +33,7 @@ export async function sendMagicLink(formData: FormData): Promise<SendMagicLinkRe
     return { ok: false, error: "Please enter a valid email address." };
   }
 
+  
   const supabase = await createClient();
 
   // shouldCreateUser=true: lets Supabase create the auth.users row on first
