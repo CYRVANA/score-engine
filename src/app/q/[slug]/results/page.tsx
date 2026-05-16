@@ -96,10 +96,16 @@ export default async function ResultsPage({
     notFound();
   }
 
-  // Sort answers by their question's order_index.
+// Normalize the embedded question shape — Supabase types `questions` as
+  // an array on this embed; collapse to a single object for easier rendering.
   const sortedAnswers = ((session.answers ?? []) as AnswerWithQuestion[])
-    .filter((a) => a.questions !== null)
-    .sort((a, b) => (a.questions!.order_index ?? 0) - (b.questions!.order_index ?? 0));
+    .map((a) => ({
+      points: a.points,
+      value: a.value,
+      question: Array.isArray(a.questions) ? a.questions[0] : a.questions,
+    }))
+    .filter((a) => a.question !== null && a.question !== undefined)
+    .sort((a, b) => (a.question!.order_index ?? 0) - (b.question!.order_index ?? 0));
 
   return (
     <div className="min-h-screen bg-background">
@@ -178,7 +184,7 @@ export default async function ResultsPage({
                     Question {idx + 1}
                   </p>
                   <p className="mt-2 text-base font-semibold text-foreground">
-                    {answer.questions?.prompt}
+                    {answer.question?.prompt}
                   </p>
                   <div className="mt-3 flex items-center justify-between gap-4">
                     <p className="text-sm leading-relaxed text-muted">
