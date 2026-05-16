@@ -1,12 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { QuizProgress } from "./QuizProgress";
+import { submitQuiz } from "@/app/q/[slug]/actions";
 
-/**
- * Quiz data types — match the shape returned by the server component.
- * Eventually replaced by auto-generated Supabase types after `npm run db:types`.
- */
 export type QuizOption = {
   label: string;
   points: number;
@@ -27,25 +24,31 @@ export type QuizData = {
   questions: QuizQuestion[];
 };
 
+type SubmitState =
+  | { kind: "idle" }
+  | { kind: "submitting" }
+  | { kind: "done"; score: number; tier_title: string | null }
+  | { kind: "error"; message: string };
+
 /**
  * Multi-step quiz renderer.
  *
- * Phase 1.1: client-side state only. No server writes yet.
- * Phase 1.2 will add the scoring Server Action call.
+ * Phase 1.2: on Finish, calls submitQuiz Server Action with the session_id +
+ * answers. Server recomputes the score authoritatively and returns it.
  *
- * State held here:
- *   - currentIndex: which question is on screen (0-based)
- *   - answers: map of question_id -> selected option index
- *
- * Navigation:
- *   - Required answers (current question must have a selection before Next is enabled)
- *   - Previous always enabled except on the first question
- *   - Selecting an option updates state but does NOT auto-advance
+ * The client only ever sends option_index per question — never points.
  */
-export function QuizTaker({ quiz }: { quiz: QuizData }) {
+export function QuizTaker({
+  quiz,
+  sessionId,
+}: {
+  quiz: QuizData;
+  sessionId: string | null;
+}) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [submitState, setSubmitState] = useState<SubmitState>({ kind: "idle" });
+  const [isPending, startTransition] = useTransition();
 
   const totalQuestions = quiz.questions.length;
   const currentQuestion = quiz.questions[currentIndex];
@@ -58,10 +61,9 @@ export function QuizTaker({ quiz }: { quiz: QuizData }) {
   }
 
   function goNext() {
-    if (!hasAnsweredCurrent) return; // required-answer guard
+    if (!hasAnsweredCurrent) return;
     if (isLastQuestion) {
-      // Phase 1.2 will replace this with a Server Action call.
-      setSubmitted(true);
+      handleFinish();
       return;
     }
     setCurrentIndex((i) => i + 1);
@@ -72,41 +74,101 @@ export function QuizTaker({ quiz }: { quiz: QuizData }) {
     setCurrentIndex((i) => i - 1);
   }
 
-  // Placeholder completion screen — replaced in Phase 1.2 by the email gate,
-  // and in Phase 1.5 by the actual results page redirect.
-  if (submitted) {
+  function handleFinish() {
+    if (!sessionId) {
+      setSubmitState({
+        kind: "error",
+        message: "This session didn't initialize correctly. Please refresh and try again.",
+      });
+      return;
+    }
+
+    // Convert answers map -> array of submissions (no points sent; server recomputes).
+    const submissions = Object.entries(answers).map(([question_id, option_index]) => ({
+      question_id,
+      option_index,
+    }));
+
+    setSubmitState({ kind: "submitting" });
+    startTransition(async () => {
+      const result = await submitQuiz(sessionId, quiz.id, submissions);
+      if (result.ok) {
+        setSubmitState({
+          kind: "done",
+          score: result.score,
+          tier_title: result.result_tier?.title ?? null,
+        });
+      } else {
+        setSubmitState({ kind: "error", message: result.error });
+      }
+    });
+  }
+
+  // --- Render: submitting state ---
+  if (submitState.kind === "submitting" || isPending) {
     return (
-      <div className="mx-auto max-w-prose px-6 py-24 text-center">
-        <p className="mb-4 text-sm font-medium uppercase tracking-widest text-brand">
-          Quiz complete
-        </p>
-        <h2 className="text-3xl font-bold text-foreground sm:text-4xl">
-          You've answered all {totalQuestions} questions.
-        </h2>
-        <p className="mt-6 text-lg leading-relaxed text-muted">
-          The scoring engine and results page land in the next Phase 1 deploy. Your answers
-          are currently held in browser state only — nothing has been saved.
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            setSubmitted(false);
-            setCurrentIndex(0);
-            setAnswers({});
-          }}
-          className="mt-8 inline-flex items-center gap-2 rounded-md border border-border px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-border/40"
-        >
-          Start over
-        </button>
-      </div>
+      <main className="mx-auto max-w-prose px-6 py-24 text-center">
+        <div className="inline-flex items-center gap-3">
+          <div
+            aria-hidden="true"
+            className="h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent"
+          />
+          <p className="text-base text-muted">Calculating your result...</p>
+        </div>
+      </main>
     );
   }
 
+  // --- Render: done state (placeholder results card) ---
+  if (submitState.kind === "done") {
+    return (
+      <main className="mx-auto max-w-prose px-6 py-16 sm:py-24">
+        <div className="rounded-lg border border-border bg-background p-8 shadow-sm sm:p-10">
+          <p className="mb-3 text-sm font-medium uppercase tracking-widest text-brand">
+            Your result
+          </p>
+          <h2 className="text-3xl font-bold leading-tight text-foreground sm:text-4xl">
+            {submitState.tier_title ?? "Result"}
+          </h2>
+          <div className="mt-6 flex items-baseline gap-2">
+            <span className="text-5xl font-bold text-brand">{submitState.score}</span>
+            <span className="text-base text-muted">points</span>
+          </div>
+          <p className="mt-6 text-sm leading-relaxed text-muted">
+            <strong className="text-foreground">Phase 1.2 placeholder.</strong> The full
+            results page with the tier description, recommendations, and call-to-action
+            lands in the next deploys. Your answers and score have been saved.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  // --- Render: error state ---
+  if (submitState.kind === "error") {
+    return (
+      <main className="mx-auto max-w-prose px-6 py-24 text-center">
+        <p className="mb-2 text-sm font-medium uppercase tracking-widest text-brand">
+          Something went wrong
+        </p>
+        <h2 className="text-2xl font-bold text-foreground">{submitState.message}</h2>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-8 inline-flex items-center gap-2 rounded-md bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600"
+        >
+          Refresh and try again
+        </button>
+      </main>
+    );
+  }
+
+  // --- Render: question state (default) ---
   if (!currentQuestion) {
     return (
-      <div className="mx-auto max-w-prose px-6 py-24 text-center">
+      <main className="mx-auto max-w-prose px-6 py-24 text-center">
         <p className="text-muted">This quiz has no questions configured.</p>
-      </div>
+      </main>
     );
   }
 
