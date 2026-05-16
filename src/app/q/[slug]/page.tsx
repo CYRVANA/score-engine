@@ -3,15 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { QuizTaker, type QuizData, type QuizOption } from "@/components/QuizTaker";
 import { startSession } from "./actions";
 
-// Public quiz pages are dynamic now (session per visit), so we can't ISR them.
 export const dynamic = "force-dynamic";
 
-/**
- * Public quiz taker page.
- *
- * Phase 1.2: starts a server-side session on every visit, passes the session_id
- * to the client. The client uses it when calling submitQuiz at the end.
- */
 export default async function QuizPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const supabase = await createClient();
@@ -21,6 +14,7 @@ export default async function QuizPage({ params }: { params: Promise<{ slug: str
     .select(
       `
       id,
+      slug,
       title,
       description,
       questions (
@@ -40,9 +34,6 @@ export default async function QuizPage({ params }: { params: Promise<{ slug: str
     notFound();
   }
 
-  // Start a session row for this visit. If it fails (e.g. DB down), we still
-  // render the quiz UI but the client will detect the missing session_id and
-  // show an error on submit rather than swallowing the failure silently.
   const sessionResult = await startSession(quiz.id);
   const sessionId = "session_id" in sessionResult ? sessionResult.session_id : null;
 
@@ -55,6 +46,7 @@ export default async function QuizPage({ params }: { params: Promise<{ slug: str
 
   const quizData: QuizData = {
     id: quiz.id,
+    slug: quiz.slug,
     title: quiz.title,
     description: quiz.description,
     questions: sortedQuestions,
