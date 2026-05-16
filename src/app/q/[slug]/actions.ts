@@ -8,35 +8,26 @@ import {
   type AnswerSubmission,
   type QuestionForScoring,
 } from "@/lib/scoring";
+import { validateEmail, emailValidationMessage } from "@/lib/email-validation";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 /**
- * Server Actions for the public quiz flow. See ARCHITECTURE.md §6 — these
- * use the service-role client to bypass RLS so anonymous takers can write
- * sessions and answers without granting anon table-level access.
- *
- * Phase 1.2: startSession + submitQuiz. Phase 1.3 will add captureLead.
+ * Server Actions for the public quiz flow. See ARCHITECTURE.md §6, §8.
+ * All use the service-role client to bypass RLS so anonymous takers can
+ * write sessions/answers/leads without granting anon write access.
  */
 
-export type SubmitResult =
-  | {
-      ok: true;
-      score: number;
-      result_tier: { id: string; title: string } | null;
-    }
-  | { ok: false; error: string };
+const CYRVANA_WORKSPACE_ID = "00000000-0000-0000-0000-000000000001";
 
-/**
- * Create a new session row when the quiz page loads.
- * Captures metadata (UTM params, referrer, user agent) for funnel attribution.
- * Returns the session UUID for the client to use when submitting answers.
- */
+// =========================================================================
+// startSession — unchanged from Phase 1.2
+// =========================================================================
 export async function startSession(
   quizId: string,
   metadata: Record<string, unknown> = {},
 ): Promise<{ session_id: string } | { error: string }> {
   const supabase = createServiceRoleClient();
 
-  // Best-effort enrichment of metadata from request headers.
   const headerList = await headers();
   const enrichedMetadata = {
     ...metadata,
@@ -60,13 +51,17 @@ export async function startSession(
   return { session_id: data.id };
 }
 
-/**
- * Finalize a quiz: re-fetch authoritative questions, recompute the score,
- * persist answers, update the session with score + tier, return results.
- *
- * Notice: we DO NOT trust any points value sent by the client. We use
- * answer.option_index to look up the canonical option server-side.
- */
+// =========================================================================
+// submitQuiz — unchanged from Phase 1.2
+// =========================================================================
+export type SubmitResult =
+  | {
+      ok: true;
+      score: number;
+      result_tier: { id: string; title: string } | null;
+    }
+  | { ok: false; error: string };
+
 export async function submitQuiz(
   sessionId: string,
   quizId: string,
@@ -74,7 +69,6 @@ export async function submitQuiz(
 ): Promise<SubmitResult> {
   const supabase = createServiceRoleClient();
 
-  // 1. Re-fetch the canonical questions for this quiz.
   const { data: questionsRaw, error: qErr } = await supabase
     .from("questions")
     .select("id, weight, options")
@@ -90,10 +84,8 @@ export async function submitQuiz(
     options: (q.options as QuestionForScoring["options"]) ?? [],
   }));
 
-  // 2. Score authoritatively.
   const { total_score, per_answer } = scoreQuiz(answers, questions);
 
-  // 3. Fetch tiers and pick the matching one.
   const { data: tiers, error: tErr } = await supabase
     .from("result_tiers")
     .select("id, title, min_score, max_score")
@@ -105,7 +97,6 @@ export async function submitQuiz(
 
   const tier = tiers ? pickResultTier(total_score, tiers) : null;
 
-  // 4. Persist each answer with denormalized points (see ARCHITECTURE.md §5).
   if (per_answer.length > 0) {
     const answerRows = per_answer.map((a) => ({
       session_id: sessionId,
@@ -120,7 +111,6 @@ export async function submitQuiz(
     }
   }
 
-  // 5. Mark the session complete with score + tier.
   const { error: sErr } = await supabase
     .from("sessions")
     .update({
@@ -139,4 +129,168 @@ export async function submitQuiz(
     score: total_score,
     result_tier: tier ? { id: tier.id, title: tier.title } : null,
   };
+}
+
+// =========================================================================
+// captureLead — NEW for Phase 1.4
+// =========================================================================
+export type LeadCaptureInput = {
+  session_id: string;
+  quiz_id: string;
+  email: string;
+  name: string;
+  consent: boolean;
+  honeypot: string;
+};
+
+export type CaptureResult =
+  | { ok: true; lead_id: string }
+  | {
+      ok: false;
+      reason: "rate_limited" | "invalid_email" | "missing_consent" | "bot" | "server_error";
+      message: string;
+    };
+
+/**
+ * Validate and persist a lead from the email gate.
+ *
+ * Defense layers (in order):
+ *  1. Honeypot: if filled, log the attempt and silently "succeed" (bots
+ *     never learn they were detected). No lead row created.
+ *  2. Rate limit: max 5 lead captures per IP per 10 minutes.
+ *  3. Consent: must be explicitly true.
+ *  4. Email: format + disposable-domain blocklist.
+ *  5. Session sanity check: the session must exist, belong to the claimed
+ *     quiz, and have completed_at set (so we know scoring ran).
+ *
+ * Per §14.5 decision: INSERT a new leads row per attempt, even on retakes.
+ * Multiple attempts with the same email create multiple leads, linked by
+ * shared email — gives us retake/progression data.
+ */
+export async function captureLead(input: LeadCaptureInput): Promise<CaptureResult> {
+  const supabase = createServiceRoleClient();
+  const headerList = await headers();
+  const clientIp = getClientIp(headerList);
+
+  // --- 1. Honeypot ---
+  if (input.honeypot && input.honeypot.length > 0) {
+    // Log the attempt for visibility into bot activity, then pretend success.
+    console.warn("[captureLead] honeypot triggered", {
+      ip: clientIp,
+      session_id: input.session_id,
+      honeypot_value: input.honeypot.slice(0, 50), // truncate for log hygiene
+    });
+    // Return a fake success so the bot's behavior is indistinguishable from
+    // a successful submission. We do NOT actually save a lead.
+    return { ok: true, lead_id: "00000000-0000-0000-0000-000000000000" };
+  }
+
+  // --- 2. Rate limit ---
+  const allowed = await checkRateLimit({
+    scope: "lead_capture",
+    key: clientIp,
+    limit: 5,
+    windowSeconds: 600, // 10 minutes
+  });
+  if (!allowed) {
+    return {
+      ok: false,
+      reason: "rate_limited",
+      message: "Too many submissions from this network. Please wait a few minutes and try again.",
+    };
+  }
+
+  // --- 3. Consent ---
+  if (!input.consent) {
+    return {
+      ok: false,
+      reason: "missing_consent",
+      message: "Please agree to receive your results to continue.",
+    };
+  }
+
+  // --- 4. Email validation ---
+  const emailCheck = validateEmail(input.email);
+  if (!emailCheck.ok) {
+    return {
+      ok: false,
+      reason: "invalid_email",
+      message: emailValidationMessage(emailCheck.reason),
+    };
+  }
+
+  // --- 5. Session sanity check ---
+  const { data: session, error: sErr } = await supabase
+    .from("sessions")
+    .select("id, quiz_id, completed_at")
+    .eq("id", input.session_id)
+    .single();
+
+  if (sErr || !session) {
+    return {
+      ok: false,
+      reason: "server_error",
+      message: "We couldn't find your session. Please refresh and try the quiz again.",
+    };
+  }
+
+  if (session.quiz_id !== input.quiz_id) {
+    // Session/quiz mismatch — possible tampering, log it.
+    console.warn("[captureLead] session/quiz mismatch", {
+      session_id: input.session_id,
+      claimed_quiz: input.quiz_id,
+      actual_quiz: session.quiz_id,
+    });
+    return {
+      ok: false,
+      reason: "server_error",
+      message: "Session mismatch. Please refresh and try the quiz again.",
+    };
+  }
+
+  if (!session.completed_at) {
+    return {
+      ok: false,
+      reason: "server_error",
+      message: "Please complete the quiz before submitting your details.",
+    };
+  }
+
+  // --- 6. Insert lead ---
+  const now = new Date().toISOString();
+  const { data: lead, error: lErr } = await supabase
+    .from("leads")
+    .insert({
+      workspace_id: CYRVANA_WORKSPACE_ID,
+      quiz_id: input.quiz_id,
+      session_id: input.session_id,
+      email: input.email.trim().toLowerCase(),
+      name: input.name.trim() || null,
+      custom_fields: {
+        consent: true,
+        consent_at: now,
+        client_ip: clientIp,
+      },
+    })
+    .select("id")
+    .single();
+
+  if (lErr || !lead) {
+    console.error("[captureLead] insert failed", lErr);
+    return {
+      ok: false,
+      reason: "server_error",
+      message: "We couldn't save your details. Please try again.",
+    };
+  }
+
+  // --- 7. Link the lead back to the session ---
+  // Best-effort. If this fails, the lead is still saved; we just lose the
+  // back-reference on the session, which is recoverable from leads.session_id.
+  await supabase
+    .from("sessions")
+    .update({ lead_id: lead.id })
+    .eq("id", input.session_id);
+
+  return { ok: true, lead_id: lead.id };
 }
