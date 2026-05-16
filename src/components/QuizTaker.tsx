@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { QuizProgress } from "./QuizProgress";
 import { EmailGate, type LeadFormData } from "./EmailGate";
-import { submitQuiz } from "@/app/q/[slug]/actions";
+import { submitQuiz, captureLead } from "@/app/q/[slug]/actions";
 
 export type QuizOption = {
   label: string;
@@ -25,19 +25,10 @@ export type QuizData = {
   questions: QuizQuestion[];
 };
 
-/**
- * Quiz states, in order:
- *   idle       — user is answering questions
- *   submitting — submitQuiz Server Action in flight
- *   gated      — score saved; waiting for email + name + consent
- *   capturing  — lead capture Server Action in flight (Phase 1.4 wires this up)
- *   done       — placeholder result card shown
- *   error      — something failed
- */
 type SubmitState =
   | { kind: "idle" }
   | { kind: "submitting" }
-  | { kind: "gated"; score: number; tier_title: string | null }
+  | { kind: "gated"; score: number; tier_title: string | null; gateError: string | null }
   | { kind: "capturing"; score: number; tier_title: string | null }
   | { kind: "done"; score: number; tier_title: string | null }
   | { kind: "error"; message: string };
@@ -96,11 +87,11 @@ export function QuizTaker({
     startTransition(async () => {
       const result = await submitQuiz(sessionId, quiz.id, submissions);
       if (result.ok) {
-        // Phase 1.3: gate before showing results.
         setSubmitState({
           kind: "gated",
           score: result.score,
           tier_title: result.result_tier?.title ?? null,
+          gateError: null,
         });
       } else {
         setSubmitState({ kind: "error", message: result.error });
@@ -109,41 +100,45 @@ export function QuizTaker({
   }
 
   function handleGateSubmit(data: LeadFormData) {
-    // Phase 1.3 placeholder: client-side honeypot check, then advance.
-    // Phase 1.4 will replace this with a captureLead Server Action call.
-    if (data.honeypot) {
-      // Pretend success — never let bots know they were detected.
-      // (In Phase 1.4 we'll log this attempt server-side.)
-      if (submitState.kind !== "gated") return;
-      setSubmitState({
-        kind: "done",
-        score: submitState.score,
-        tier_title: submitState.tier_title,
-      });
+    if (submitState.kind !== "gated") return;
+    if (!sessionId) {
+      setSubmitState({ ...submitState, gateError: "Session expired. Please refresh." });
       return;
     }
 
-    if (submitState.kind !== "gated") return;
-
-    // Brief simulated delay so the spinner is visible; piece 4 will replace
-    // this with the actual Server Action latency.
-    setSubmitState({
-      kind: "capturing",
+    // Snapshot current score/tier so we can carry them through state transitions.
+    const carried = {
       score: submitState.score,
       tier_title: submitState.tier_title,
-    });
-    const captured = { score: submitState.score, tier_title: submitState.tier_title };
-    setTimeout(() => {
-      setSubmitState({
-        kind: "done",
-        score: captured.score,
-        tier_title: captured.tier_title,
+    };
+
+    setSubmitState({ kind: "capturing", ...carried });
+
+    startTransition(async () => {
+      const result = await captureLead({
+        session_id: sessionId,
+        quiz_id: quiz.id,
+        email: data.email,
+        name: data.name,
+        consent: data.consent,
+        honeypot: data.honeypot,
       });
-    }, 600);
+
+      if (result.ok) {
+        setSubmitState({ kind: "done", ...carried });
+      } else {
+        // Drop back into gated state with an error message so the user can retry.
+        setSubmitState({
+          kind: "gated",
+          ...carried,
+          gateError: result.message,
+        });
+      }
+    });
   }
 
-  // --- Render: submitting state ---
-  if (submitState.kind === "submitting" || isPending) {
+  // --- Render: submitting state (after Finish, before gate) ---
+  if (submitState.kind === "submitting") {
     return (
       <main className="mx-auto max-w-prose px-6 py-24 text-center">
         <div className="inline-flex items-center gap-3">
@@ -160,11 +155,23 @@ export function QuizTaker({
   // --- Render: email gate ---
   if (submitState.kind === "gated" || submitState.kind === "capturing") {
     return (
-      <EmailGate
-        score={submitState.score}
-        onSubmit={handleGateSubmit}
-        isPending={submitState.kind === "capturing"}
-      />
+      <>
+        {submitState.kind === "gated" && submitState.gateError && (
+          <div className="mx-auto mt-6 max-w-prose px-6">
+            <div
+              role="alert"
+              className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+            >
+              {submitState.gateError}
+            </div>
+          </div>
+        )}
+        <EmailGate
+          score={submitState.score}
+          onSubmit={handleGateSubmit}
+          isPending={submitState.kind === "capturing" || isPending}
+        />
+      </>
     );
   }
 
@@ -184,9 +191,9 @@ export function QuizTaker({
             <span className="text-base text-muted">points</span>
           </div>
           <p className="mt-6 text-sm leading-relaxed text-muted">
-            <strong className="text-foreground">Phase 1.3 placeholder.</strong> Lead
-            capture wires up in piece 4; the full results page (tier description, CTA,
-            etc.) lands in piece 5. Your score is saved; your email is not yet.
+            <strong className="text-foreground">Lead captured.</strong> Your details are
+            saved and linked to this session. The full results page with tier description
+            and recommendations lands in the next deploy (piece 5).
           </p>
         </div>
       </main>
