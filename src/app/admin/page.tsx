@@ -79,6 +79,7 @@ export default async function AdminHome() {
   );
 }
 
+
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-lg border border-border bg-background p-6">
