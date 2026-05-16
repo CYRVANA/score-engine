@@ -109,6 +109,14 @@ export default async function ResultsPage({
 
   return (
     <div className="min-h-screen bg-background">
+      <pre className="m-4 max-w-prose overflow-auto rounded bg-yellow-100 p-4 text-xs">
+           {JSON.stringify({
+             url_slug: slug,
+             quiz_resolved: quiz,
+             tier_resolved: tier,
+             completed_at: session.completed_at,
+           }, null, 2)}
+         </pre>
       <div className="mx-auto max-w-prose px-6 py-12 sm:py-16">
         {/* Hero — score + tier */}
         <header className="text-center">
