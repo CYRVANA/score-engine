@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { QuizProgress } from "./QuizProgress";
 import { EmailGate, type LeadFormData } from "./EmailGate";
 import { submitQuiz, captureLead } from "@/app/q/[slug]/actions";
@@ -20,6 +21,7 @@ export type QuizQuestion = {
 
 export type QuizData = {
   id: string;
+  slug: string;
   title: string;
   description: string | null;
   questions: QuizQuestion[];
@@ -30,7 +32,6 @@ type SubmitState =
   | { kind: "submitting" }
   | { kind: "gated"; score: number; tier_title: string | null; gateError: string | null }
   | { kind: "capturing"; score: number; tier_title: string | null }
-  | { kind: "done"; score: number; tier_title: string | null }
   | { kind: "error"; message: string };
 
 export function QuizTaker({
@@ -40,6 +41,7 @@ export function QuizTaker({
   quiz: QuizData;
   sessionId: string | null;
 }) {
+  const router = useRouter();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [submitState, setSubmitState] = useState<SubmitState>({ kind: "idle" });
@@ -106,7 +108,6 @@ export function QuizTaker({
       return;
     }
 
-    // Snapshot current score/tier so we can carry them through state transitions.
     const carried = {
       score: submitState.score,
       tier_title: submitState.tier_title,
@@ -125,9 +126,11 @@ export function QuizTaker({
       });
 
       if (result.ok) {
-        setSubmitState({ kind: "done", ...carried });
+        // Redirect to the bookmarkable results page.
+        // router.push triggers a client-side navigation; the page is server-rendered.
+        router.push(`/q/${quiz.slug}/results?s=${sessionId}`);
       } else {
-        // Drop back into gated state with an error message so the user can retry.
+        // Drop back into gated state with an error message.
         setSubmitState({
           kind: "gated",
           ...carried,
@@ -172,31 +175,6 @@ export function QuizTaker({
           isPending={submitState.kind === "capturing" || isPending}
         />
       </>
-    );
-  }
-
-  // --- Render: done state (placeholder results card) ---
-  if (submitState.kind === "done") {
-    return (
-      <main className="mx-auto max-w-prose px-6 py-16 sm:py-24">
-        <div className="rounded-lg border border-border bg-background p-8 shadow-sm sm:p-10">
-          <p className="mb-3 text-sm font-medium uppercase tracking-widest text-brand">
-            Your result
-          </p>
-          <h2 className="text-3xl font-bold leading-tight text-foreground sm:text-4xl">
-            {submitState.tier_title ?? "Result"}
-          </h2>
-          <div className="mt-6 flex items-baseline gap-2">
-            <span className="text-5xl font-bold text-brand">{submitState.score}</span>
-            <span className="text-base text-muted">points</span>
-          </div>
-          <p className="mt-6 text-sm leading-relaxed text-muted">
-            <strong className="text-foreground">Lead captured.</strong> Your details are
-            saved and linked to this session. The full results page with tier description
-            and recommendations lands in the next deploy (piece 5).
-          </p>
-        </div>
-      </main>
     );
   }
 
