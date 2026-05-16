@@ -8,6 +8,7 @@ import type { AdminProfile } from "@/lib/admin-auth";
  * server component and passes the resolved profile here. The login and
  * logout routes don't use this shell at all.
  */
+
 export function AdminShell({
   profile,
   children,
