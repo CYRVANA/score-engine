@@ -8,7 +8,6 @@ import type { AdminProfile } from "@/lib/admin-auth";
  * server component and passes the resolved profile here. The login and
  * logout routes don't use this shell at all.
  */
-
 export function AdminShell({
   profile,
   children,
@@ -30,8 +29,8 @@ export function AdminShell({
 
           <nav className="flex-1 space-y-1">
             <NavLink href="/admin" label="Dashboard" />
-            <NavLink href="/admin/leads" label="Leads" badge="2.2" />
-            <NavLink href="/admin/quizzes" label="Quizzes" badge="2.3" />
+            <NavLink href="/admin/leads" label="Leads" />
+            <NavLink href="/admin/quizzes" label="Quizzes" />
             <NavLink href="/admin/destinations" label="Destinations" badge="2.5" />
             <NavLink href="/admin/analytics" label="Analytics" badge="2.6" />
           </nav>
