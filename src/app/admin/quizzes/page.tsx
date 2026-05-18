@@ -56,14 +56,12 @@ export default async function QuizzesPage() {
               {quizzes?.length ?? 0} total in your workspace.
             </p>
           </div>
-          <button
-            type="button"
-            disabled
-            title="Quiz builder ships in piece 2.4"
-            className="cursor-not-allowed rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-muted opacity-60"
+          <Link
+            href="/admin/quizzes/new"
+            className="inline-flex items-center gap-1 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600"
           >
-            + New quiz (coming in 2.4)
-          </button>
+            <span aria-hidden="true">+</span> New quiz
+          </Link>
         </div>
       </header>
 
@@ -71,7 +69,8 @@ export default async function QuizzesPage() {
         <div className="rounded-lg border border-dashed border-border bg-background p-10 text-center">
           <p className="text-base font-semibold text-foreground">No quizzes yet.</p>
           <p className="mt-2 text-sm text-muted">
-            Until the quiz builder ships, add quizzes via a SQL migration.
+            Click <span className="font-semibold text-foreground">+ New quiz</span> to
+            create your first one.
           </p>
         </div>
       ) : (
