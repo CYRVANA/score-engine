@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { AdminShell } from "@/components/AdminShell";
 import { StatusControl } from "../StatusControl";
+import { QuizActions } from "../QuizActions";
 
 export const dynamic = "force-dynamic";
 
@@ -32,14 +33,9 @@ type Tier = {
 /**
  * Quiz detail at /admin/quizzes/[id].
  *
- * Phase 2.3: read-only. Shows questions, tiers, and computed score-range
- * coverage so authoring decisions are visible. The full editor is piece 2.4.
- *
- * Coverage analysis (informational, not blocking):
- *   - min_possible_score = sum over questions of (min option points × weight)
- *   - max_possible_score = sum over questions of (max option points × weight)
- *   - Tier coverage = which subset of [min, max] is covered by any tier
- *   - Warnings shown for: gaps in coverage, scores above max tier, scores below min tier
+ * Phase 2.3: read-only view with coverage analysis.
+ * Phase 2.4a (this): adds Edit, Clone, Delete actions to the header.
+ * Phase 2.4b (next): inline question + tier editors.
  */
 export default async function QuizDetailPage({ params }: { params: RouteParams }) {
   const profile = await requireAdmin();
@@ -118,8 +114,17 @@ export default async function QuizDetailPage({ params }: { params: RouteParams }
               )}
             </div>
           </div>
-          <div className="flex-shrink-0">
+          <div className="flex flex-col items-end gap-3">
             <StatusControl quizId={quiz.id} currentStatus={status} />
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/admin/quizzes/${quiz.id}/edit`}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-semibold text-foreground transition hover:bg-border/30"
+              >
+                Edit metadata
+              </Link>
+              <QuizActions quizId={quiz.id} />
+            </div>
           </div>
         </div>
       </header>
@@ -169,7 +174,14 @@ export default async function QuizDetailPage({ params }: { params: RouteParams }
       <section className="mt-10">
         <h2 className="text-xl font-bold text-foreground">Questions ({questions.length})</h2>
         {questions.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">No questions configured.</p>
+          <div className="mt-3 rounded-lg border border-dashed border-border bg-background p-6">
+            <p className="text-sm text-muted">
+              No questions configured. Add at least one before publishing.
+            </p>
+            <p className="mt-2 text-xs text-muted">
+              Inline question editor ships in piece 2.4b; add via SQL until then.
+            </p>
+          </div>
         ) : (
           <ol className="mt-4 space-y-4">
             {questions.map((q) => (
@@ -207,7 +219,14 @@ export default async function QuizDetailPage({ params }: { params: RouteParams }
       <section className="mt-10">
         <h2 className="text-xl font-bold text-foreground">Result tiers ({tiers.length})</h2>
         {tiers.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">No result tiers configured.</p>
+          <div className="mt-3 rounded-lg border border-dashed border-border bg-background p-6">
+            <p className="text-sm text-muted">
+              No result tiers configured. Add at least one before publishing.
+            </p>
+            <p className="mt-2 text-xs text-muted">
+              Inline tier editor ships in piece 2.4b; add via SQL until then.
+            </p>
+          </div>
         ) : (
           <ol className="mt-4 space-y-4">
             {tiers.map((t) => (
@@ -245,20 +264,12 @@ export default async function QuizDetailPage({ params }: { params: RouteParams }
           </ol>
         )}
       </section>
-
-      <section className="mt-10 rounded-lg border border-dashed border-border bg-background p-6">
-        <h3 className="text-base font-semibold text-foreground">Editing</h3>
-        <p className="mt-2 text-sm leading-relaxed text-muted">
-          Edit questions, options, and tiers via SQL until the quiz builder ships in
-          piece 2.4. The status control on this page is fully functional today.
-        </p>
-      </section>
     </AdminShell>
   );
 }
 
 // =========================================================================
-// Coverage analysis
+// Coverage analysis — unchanged from Phase 2.3
 // =========================================================================
 
 type CoverageReport = {
@@ -284,10 +295,7 @@ function analyzeCoverage(questions: Question[], tiers: Tier[]): CoverageReport {
   let minPossible = 0;
   let maxPossible = 0;
   for (const q of questions) {
-    if (q.options.length === 0) {
-      // Option-less question — treat as 0 contribution to both bounds.
-      continue;
-    }
+    if (q.options.length === 0) continue;
     const points = q.options.map((o) => o.points * (q.weight ?? 1));
     minPossible += Math.min(...points);
     maxPossible += Math.max(...points);
@@ -302,8 +310,6 @@ function analyzeCoverage(questions: Question[], tiers: Tier[]): CoverageReport {
     return { minPossible, maxPossible, fullyCovered: false, warnings };
   }
 
-  // Walk through the score range from minPossible to maxPossible and flag
-  // any integer score that isn't covered by some tier.
   const uncovered: number[] = [];
   for (let s = minPossible; s <= maxPossible; s++) {
     const covered = tiers.some((t) => s >= t.min_score && s <= t.max_score);
@@ -318,7 +324,6 @@ function analyzeCoverage(questions: Question[], tiers: Tier[]): CoverageReport {
     );
   }
 
-  // Check for tiers entirely outside the achievable range.
   for (const t of tiers) {
     if (t.max_score < minPossible) {
       warnings.push(
@@ -332,7 +337,6 @@ function analyzeCoverage(questions: Question[], tiers: Tier[]): CoverageReport {
     }
   }
 
-  // Check for overlapping tiers — ambiguous which one wins (first found wins).
   for (let i = 0; i < tiers.length; i++) {
     for (let j = i + 1; j < tiers.length; j++) {
       const a = tiers[i];
