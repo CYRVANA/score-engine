@@ -5,22 +5,26 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { AdminShell } from "@/components/AdminShell";
 import { StatusControl } from "../StatusControl";
 import { QuizActions } from "../QuizActions";
+import { QuestionsManager } from "../QuestionsManager";
+import { TiersManager } from "../TiersManager";
+import type { QuestionForEdit } from "../QuestionEditor";
+import type { TierForEdit } from "../TierEditor";
+import type { CoverageTier } from "../CoverageBox";
 
 export const dynamic = "force-dynamic";
 
 type RouteParams = Promise<{ id: string }>;
 type QuizStatus = "draft" | "published" | "archived";
 
-type QuestionOption = { label: string; points: number };
-type Question = {
+type RawQuestion = {
   id: string;
   order_index: number;
   type: string;
   prompt: string;
   weight: number;
-  options: QuestionOption[];
+  options: Array<{ label: string; points: number }>;
 };
-type Tier = {
+type RawTier = {
   id: string;
   min_score: number;
   max_score: number;
@@ -33,9 +37,8 @@ type Tier = {
 /**
  * Quiz detail at /admin/quizzes/[id].
  *
- * Phase 2.3: read-only view with coverage analysis.
- * Phase 2.4a (this): adds Edit, Clone, Delete actions to the header.
- * Phase 2.4b (next): inline question + tier editors.
+ * Phase 2.4b: full inline editing. Questions and tiers are managed by client
+ * components that handle local state and call Server Actions for persistence.
  */
 export default async function QuizDetailPage({ params }: { params: RouteParams }) {
   const profile = await requireAdmin();
@@ -68,15 +71,35 @@ export default async function QuizDetailPage({ params }: { params: RouteParams }
     notFound();
   }
 
-  const questions = ((quiz.questions ?? []) as Question[])
-    .map((q) => ({ ...q, options: (q.options ?? []) as QuestionOption[] }))
+  const questions: QuestionForEdit[] = ((quiz.questions ?? []) as RawQuestion[])
+    .map((q) => ({
+      id: q.id,
+      order_index: q.order_index,
+      prompt: q.prompt,
+      weight: q.weight,
+      options: (q.options ?? []).map((o) => ({ label: o.label, points: o.points })),
+    }))
     .sort((a, b) => a.order_index - b.order_index);
 
-  const tiers = ((quiz.result_tiers ?? []) as Tier[]).sort(
-    (a, b) => a.min_score - b.min_score,
-  );
+  const tiers: TierForEdit[] = ((quiz.result_tiers ?? []) as RawTier[])
+    .map((t) => ({
+      id: t.id,
+      min_score: t.min_score,
+      max_score: t.max_score,
+      title: t.title,
+      description: t.description,
+      cta_label: t.cta_label,
+      cta_url: t.cta_url,
+    }))
+    .sort((a, b) => a.min_score - b.min_score);
 
-  const coverage = analyzeCoverage(questions, tiers);
+  // Coverage box reads tiers as { min, max, title }; passing the trimmed shape.
+  const coverageTiers: CoverageTier[] = tiers.map((t) => ({
+    min_score: t.min_score,
+    max_score: t.max_score,
+    title: t.title,
+  }));
+
   const status = (quiz.status as QuizStatus) ?? "draft";
 
   return (
@@ -137,245 +160,28 @@ export default async function QuizDetailPage({ params }: { params: RouteParams }
         <Fact label="Tiers" value={tiers.length.toString()} />
       </section>
 
-      {/* Coverage analysis */}
-      <section className="mt-10">
-        <h2 className="text-xl font-bold text-foreground">Score coverage</h2>
-        <p className="mt-2 text-sm text-muted">
-          The achievable score range, and how well your result tiers cover it.
-        </p>
-
-        <div className="mt-4 rounded-lg border border-border bg-background p-5">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Fact label="Min possible score" value={coverage.minPossible.toString()} />
-            <Fact label="Max possible score" value={coverage.maxPossible.toString()} />
-            <Fact
-              label="Coverage"
-              value={coverage.fullyCovered ? "Complete" : "Has gaps"}
-              accent={coverage.fullyCovered ? "good" : "warn"}
-            />
-          </div>
-
-          {coverage.warnings.length > 0 && (
-            <ul className="mt-5 space-y-2">
-              {coverage.warnings.map((w, idx) => (
-                <li
-                  key={idx}
-                  className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
-                >
-                  <span className="font-semibold">Note:</span> {w}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
-
-      {/* Questions */}
-      <section className="mt-10">
-        <h2 className="text-xl font-bold text-foreground">Questions ({questions.length})</h2>
-        {questions.length === 0 ? (
-          <div className="mt-3 rounded-lg border border-dashed border-border bg-background p-6">
-            <p className="text-sm text-muted">
-              No questions configured. Add at least one before publishing.
-            </p>
-            <p className="mt-2 text-xs text-muted">
-              Inline question editor ships in piece 2.4b; add via SQL until then.
-            </p>
-          </div>
-        ) : (
-          <ol className="mt-4 space-y-4">
-            {questions.map((q) => (
-              <li key={q.id} className="rounded-lg border border-border bg-background p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium uppercase tracking-widest text-muted">
-                      Question {q.order_index} · weight {q.weight}
-                    </p>
-                    <p className="mt-1.5 text-base font-semibold text-foreground">
-                      {q.prompt}
-                    </p>
-                  </div>
-                </div>
-                <ul className="mt-3 space-y-1.5">
-                  {q.options.map((opt, idx) => (
-                    <li
-                      key={idx}
-                      className="flex items-center justify-between rounded-md bg-border/15 px-3 py-2 text-sm"
-                    >
-                      <span className="text-foreground">{opt.label}</span>
-                      <span className="flex-shrink-0 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold text-brand-700">
-                        {opt.points} pt{opt.points === 1 ? "" : "s"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      {/* Questions (includes coverage box at top) */}
+      <div className="mt-10">
+        <QuestionsManager
+          quizId={quiz.id}
+          initialQuestions={questions}
+          tiers={coverageTiers}
+        />
+      </div>
 
       {/* Tiers */}
-      <section className="mt-10">
-        <h2 className="text-xl font-bold text-foreground">Result tiers ({tiers.length})</h2>
-        {tiers.length === 0 ? (
-          <div className="mt-3 rounded-lg border border-dashed border-border bg-background p-6">
-            <p className="text-sm text-muted">
-              No result tiers configured. Add at least one before publishing.
-            </p>
-            <p className="mt-2 text-xs text-muted">
-              Inline tier editor ships in piece 2.4b; add via SQL until then.
-            </p>
-          </div>
-        ) : (
-          <ol className="mt-4 space-y-4">
-            {tiers.map((t) => (
-              <li key={t.id} className="rounded-lg border border-border bg-background p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium uppercase tracking-widest text-muted">
-                      Scores {t.min_score}–{t.max_score}
-                    </p>
-                    <p className="mt-1.5 text-base font-semibold text-foreground">
-                      {t.title}
-                    </p>
-                    {t.description && (
-                      <p className="mt-2 text-sm leading-relaxed text-muted">
-                        {t.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                {t.cta_label && t.cta_url && (
-                  <div className="mt-3 flex items-center gap-2 text-sm">
-                    <span className="text-muted">CTA:</span>
-                    <a
-                      href={t.cta_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-brand hover:underline"
-                    >
-                      {t.cta_label} ↗
-                    </a>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      <div className="mt-10">
+        <TiersManager quizId={quiz.id} initialTiers={tiers} />
+      </div>
     </AdminShell>
   );
 }
 
-// =========================================================================
-// Coverage analysis — unchanged from Phase 2.3
-// =========================================================================
-
-type CoverageReport = {
-  minPossible: number;
-  maxPossible: number;
-  fullyCovered: boolean;
-  warnings: string[];
-};
-
-function analyzeCoverage(questions: Question[], tiers: Tier[]): CoverageReport {
-  if (questions.length === 0) {
-    return {
-      minPossible: 0,
-      maxPossible: 0,
-      fullyCovered: tiers.length > 0,
-      warnings:
-        tiers.length === 0
-          ? ["No questions and no tiers yet. Add both before publishing."]
-          : ["No questions yet. Tiers will never be matched."],
-    };
-  }
-
-  let minPossible = 0;
-  let maxPossible = 0;
-  for (const q of questions) {
-    if (q.options.length === 0) continue;
-    const points = q.options.map((o) => o.points * (q.weight ?? 1));
-    minPossible += Math.min(...points);
-    maxPossible += Math.max(...points);
-  }
-
-  const warnings: string[] = [];
-
-  if (tiers.length === 0) {
-    warnings.push(
-      `Achievable scores are ${minPossible}–${maxPossible}, but no tiers are defined. All takers will see the generic "no tier" fallback.`,
-    );
-    return { minPossible, maxPossible, fullyCovered: false, warnings };
-  }
-
-  const uncovered: number[] = [];
-  for (let s = minPossible; s <= maxPossible; s++) {
-    const covered = tiers.some((t) => s >= t.min_score && s <= t.max_score);
-    if (!covered) uncovered.push(s);
-  }
-
-  if (uncovered.length > 0) {
-    warnings.push(
-      uncovered.length <= 10
-        ? `Scores ${uncovered.join(", ")} fall outside any tier — takers landing there will see a generic fallback.`
-        : `${uncovered.length} possible scores (e.g. ${uncovered.slice(0, 5).join(", ")}...) fall outside any tier.`,
-    );
-  }
-
-  for (const t of tiers) {
-    if (t.max_score < minPossible) {
-      warnings.push(
-        `Tier "${t.title}" (${t.min_score}–${t.max_score}) is below the achievable minimum score of ${minPossible} — it can never match.`,
-      );
-    }
-    if (t.min_score > maxPossible) {
-      warnings.push(
-        `Tier "${t.title}" (${t.min_score}–${t.max_score}) is above the achievable maximum score of ${maxPossible} — it can never match.`,
-      );
-    }
-  }
-
-  for (let i = 0; i < tiers.length; i++) {
-    for (let j = i + 1; j < tiers.length; j++) {
-      const a = tiers[i];
-      const b = tiers[j];
-      if (a.min_score <= b.max_score && b.min_score <= a.max_score) {
-        warnings.push(
-          `Tiers "${a.title}" and "${b.title}" overlap — scores in the overlap get the first-matched tier.`,
-        );
-      }
-    }
-  }
-
-  return {
-    minPossible,
-    maxPossible,
-    fullyCovered: uncovered.length === 0 && warnings.length === 0,
-    warnings,
-  };
-}
-
-function Fact({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: "good" | "warn";
-}) {
-  const valueClass =
-    accent === "good"
-      ? "text-brand"
-      : accent === "warn"
-        ? "text-amber-700"
-        : "text-foreground";
+function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-border bg-background p-3">
       <p className="text-xs font-medium uppercase tracking-widest text-muted">{label}</p>
-      <p className={`mt-1.5 text-lg font-bold ${valueClass}`}>{value}</p>
+      <p className="mt-1.5 text-lg font-bold text-foreground">{value}</p>
     </div>
   );
 }
