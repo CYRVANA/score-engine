@@ -70,12 +70,7 @@ Deno.serve(async (_req: Request) => {
   });
 
   // Set the encryption key on this session so decrypt_destination_config can use it.
-  // RPC wrapper around set_config because Supabase client doesn't expose set_config directly.
-  await supabase.rpc("set_config", {
-    parameter: "app.destination_secrets_key",
-    value: secretsKey,
-    is_local: false,
-  });
+  await supabase.rpc("set_destination_secrets_key", { value: secretsKey });
 
   // ==========================================================================
   // 1. Pull a batch of due deliveries.
