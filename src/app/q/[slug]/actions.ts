@@ -10,6 +10,7 @@ import {
 } from "@/lib/scoring";
 import { validateEmail, emailValidationMessage } from "@/lib/email-validation";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { isDestinationsEnabled } from "@/lib/feature-flags";
 
 /**
  * Server Actions for the public quiz flow. See ARCHITECTURE.md §6, §8.
@@ -222,7 +223,13 @@ export async function captureLead(input: LeadCaptureInput): Promise<CaptureResul
   // --- 5. Session sanity check ---
   const { data: session, error: sErr } = await supabase
     .from("sessions")
-    .select("id, quiz_id, completed_at")
+    .select(
+      `
+      id, quiz_id, completed_at, score,
+      quizzes:quiz_id ( title, slug ),
+      result_tiers:result_tier_id ( title )
+    `,
+    )
     .eq("id", input.session_id)
     .single();
 
@@ -291,6 +298,56 @@ export async function captureLead(input: LeadCaptureInput): Promise<CaptureResul
     .from("sessions")
     .update({ lead_id: lead.id })
     .eq("id", input.session_id);
+
+  // --- 8. Enqueue destination deliveries ---
+  // Best-effort. If enqueue fails, the lead is still saved; admin can retry
+  // delivery manually from the Destinations UI.
+  // Per ARCHITECTURE.md §9: workspace-wide destinations (quiz_id IS NULL) and
+  // quiz-specific destinations both apply; rows are inserted with status='pending'.
+  //
+  // Gated by FEATURE_DESTINATIONS env var. When disabled, leads still capture
+  // normally and the CSV export from /admin/leads is the delivery mechanism.
+  if (isDestinationsEnabled()) {
+    try {
+      const { data: destinations } = await supabase
+        .from("destinations")
+        .select("id, quiz_id")
+        .eq("workspace_id", CYRVANA_WORKSPACE_ID)
+        .eq("is_active", true)
+        .or(`quiz_id.is.null,quiz_id.eq.${input.quiz_id}`);
+
+      if (destinations && destinations.length > 0) {
+        // Defensive embed unwrap.
+        const quiz = Array.isArray(session.quizzes) ? session.quizzes[0] : session.quizzes;
+        const tier = Array.isArray(session.result_tiers)
+          ? session.result_tiers[0]
+          : session.result_tiers;
+
+        const payload = {
+          email: input.email.trim().toLowerCase(),
+          name: input.name.trim() || null,
+          phone: null,  // not currently collected; reserved
+          quiz_title: quiz?.title ?? null,
+          quiz_slug: quiz?.slug ?? null,
+          score: session.score ?? null,
+          tier_title: tier?.title ?? null,
+          captured_at: now,
+        };
+
+        await supabase.from("destination_deliveries").insert(
+          destinations.map((d) => ({
+            destination_id: d.id,
+            lead_id: lead.id,
+            payload,
+            status: "pending",
+          })),
+        );
+      }
+    } catch (enqueueErr) {
+      console.error("[captureLead] failed to enqueue destination deliveries", enqueueErr);
+      // Intentionally don't propagate — the lead is the durable record.
+    }
+  }
 
   return { ok: true, lead_id: lead.id };
 }
