@@ -313,7 +313,7 @@ export async function captureLead(input: LeadCaptureInput): Promise<CaptureResul
         .from("destinations")
         .select("id, quiz_id")
         .eq("workspace_id", CYRVANA_WORKSPACE_ID)
-        .eq("is_active", true)
+        .eq("active", true)
         .or(`quiz_id.is.null,quiz_id.eq.${input.quiz_id}`);
 
       if (destinations && destinations.length > 0) {

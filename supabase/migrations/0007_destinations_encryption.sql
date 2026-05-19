@@ -17,10 +17,10 @@ alter table destinations
 
 -- Make sure the active+type lookup the worker does is cheap.
 create index if not exists destinations_workspace_active_idx
-  on destinations (workspace_id, is_active) where is_active = true;
+  on destinations (workspace_id, active) where active = true;
 
 create index if not exists destinations_quiz_active_idx
-  on destinations (quiz_id, is_active) where quiz_id is not null and is_active = true;
+  on destinations (quiz_id, active) where quiz_id is not null and active = true;
 
 -- =========================================================================
 -- destination_deliveries: add columns needed for retry tracking and

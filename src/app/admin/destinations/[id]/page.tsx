@@ -48,7 +48,7 @@ export default async function DestinationDetailPage({
     .from("destinations")
     .select(
       `
-      id, name, type, is_active, quiz_id, created_at,
+      id, name, type, active, quiz_id, created_at,
       last_test_at, last_test_status, last_test_error,
       quizzes:quiz_id ( title, slug )
     `,
@@ -97,7 +97,7 @@ export default async function DestinationDetailPage({
               <span className="text-muted">{TYPE_LABELS[dest.type] ?? dest.type}</span>
               <span className="text-muted">·</span>
               <span className="text-muted">{quiz ? quiz.title : "All quizzes"}</span>
-              {dest.is_active ? (
+              {dest.active ? (
                 <span className="inline-flex rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-semibold text-brand-700">
                   Active
                 </span>
@@ -109,7 +109,7 @@ export default async function DestinationDetailPage({
             </div>
           </div>
           <div className="flex flex-shrink-0 flex-wrap items-start gap-2">
-            <DestinationToggleActive destId={dest.id} isActive={dest.is_active} />
+            <DestinationToggleActive destId={dest.id} isActive={dest.active} />
             <DestinationDeleteButton destId={dest.id} />
           </div>
         </div>
