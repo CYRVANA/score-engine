@@ -25,10 +25,8 @@ async function setEncryptionKey(
         "DESTINATION_SECRETS_KEY is not configured on this server. Set it in your Netlify env vars.",
     };
   }
-  const { error } = await supabase.rpc("set_config", {
-    parameter: "app.destination_secrets_key",
+  const { error } = await supabase.rpc("set_destination_secrets_key", {
     value: key,
-    is_local: false,
   });
   if (error) return { ok: false, error: `Failed to set encryption key: ${error.message}` };
   return { ok: true };

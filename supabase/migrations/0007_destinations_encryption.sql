@@ -99,20 +99,22 @@ comment on function decrypt_destination_config is
   'Decrypts a config encrypted by encrypt_destination_config. See ARCHITECTURE.md §9.';
 
 -- =========================================================================
--- set_config RPC wrapper.
--- Supabase JS client doesn't expose set_config directly; this wrapper lets
--- the Edge Function and Server Actions set session GUCs (specifically the
--- destination_secrets_key) before calling encrypt/decrypt functions.
+-- set_destination_secrets_key RPC.
+-- The Supabase JS client doesn't expose Postgres's set_config directly,
+-- and we can't shadow the built-in with our own set_config (it's owned
+-- by the postgres role). This wrapper takes only the value, sets the
+-- specific GUC we need, and is safe to expose to the service-role client.
 -- =========================================================================
-create or replace function set_config(parameter text, value text, is_local boolean)
-returns text
+create or replace function set_destination_secrets_key(value text)
+returns void
 language plpgsql
 security definer
+set search_path = public
 as $$
 begin
-  return set_config(parameter, value, is_local);
+  perform set_config('app.destination_secrets_key', value, false);
 end;
 $$;
 
-comment on function set_config(text, text, boolean) is
-  'RPC wrapper around pg set_config so the JS client can set the destination_secrets_key GUC.';
+comment on function set_destination_secrets_key(text) is
+  'Sets the destination_secrets_key GUC on the current session so encrypt/decrypt helpers can use it. Called by the Server Actions and Edge Function at start of every request.';
