@@ -129,7 +129,7 @@ export async function createDestination(
       type: input.type,
       name,
       config_encrypted: encrypted as string,
-      is_active: true,
+      active: true,
       last_test_at: new Date().toISOString(),
       last_test_status: "ok",
     })
@@ -167,7 +167,7 @@ export async function setDestinationActive(
 
   const { error: updErr } = await supabase
     .from("destinations")
-    .update({ is_active: active })
+    .update({ active: active })
     .eq("id", destId);
   if (updErr) return { ok: false, error: updErr.message };
 

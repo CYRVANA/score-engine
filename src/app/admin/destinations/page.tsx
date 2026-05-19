@@ -32,7 +32,7 @@ export default async function DestinationsPage() {
     .from("destinations")
     .select(
       `
-      id, name, type, is_active, quiz_id, created_at,
+      id, name, type, active, quiz_id, created_at,
       last_test_at, last_test_status,
       quizzes:quiz_id ( title, slug )
     `,
@@ -137,7 +137,7 @@ export default async function DestinationsPage() {
                       </span>
                     </Td>
                     <Td>
-                      {d.is_active ? (
+                      {d.active ? (
                         <span className="inline-flex rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-semibold text-brand-700">
                           Active
                         </span>

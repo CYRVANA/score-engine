@@ -39,7 +39,7 @@ type DestinationRow = {
   workspace_id: string;
   type: string;
   config_encrypted: string;
-  is_active: boolean;
+  active: boolean;
 };
 
 type AdapterResult =
@@ -130,7 +130,7 @@ Deno.serve(async (_req: Request) => {
     // Fetch destination + decrypted config.
     const { data: dest, error: destErr } = await supabase
       .from("destinations")
-      .select("id, workspace_id, type, config_encrypted, is_active")
+      .select("id, workspace_id, type, config_encrypted, active")
       .eq("id", destId)
       .single();
 
@@ -141,7 +141,7 @@ Deno.serve(async (_req: Request) => {
       continue;
     }
 
-    if (!dest.is_active) {
+    if (!dest.active) {
       console.log(`[process-deliveries] destination ${destId} inactive; skipping`);
       await markFailed(supabase, items, "destination_inactive", false);
       failed += items.length;
