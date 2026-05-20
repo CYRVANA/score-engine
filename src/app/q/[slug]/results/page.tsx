@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { isAiNarrativesEnabled } from "@/lib/feature-flags";
+import { NarrativeLoader } from "./NarrativeLoader";
 
 // Force dynamic — each session is unique, no point caching.
 export const dynamic = "force-dynamic";
@@ -165,6 +167,11 @@ export default async function ResultsPage({
             </>
           )}
         </div>
+
+        {/* Personalized AI narrative (gated by feature flag) */}
+        {isAiNarrativesEnabled() && (
+          <NarrativeLoader sessionId={session.id} />
+        )}
 
         {/* Answer breakdown */}
         {sortedAnswers.length > 0 && (

@@ -10,7 +10,7 @@ import {
 } from "@/lib/scoring";
 import { validateEmail, emailValidationMessage } from "@/lib/email-validation";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
-import { isDestinationsEnabled } from "@/lib/feature-flags";
+import { isDestinationsEnabled, isAiNarrativesEnabled } from "@/lib/feature-flags";
 
 /**
  * Server Actions for the public quiz flow. See ARCHITECTURE.md §6, §8.
@@ -346,6 +346,32 @@ export async function captureLead(input: LeadCaptureInput): Promise<CaptureResul
     } catch (enqueueErr) {
       console.error("[captureLead] failed to enqueue destination deliveries", enqueueErr);
       // Intentionally don't propagate — the lead is the durable record.
+    }
+  }
+
+  // --- 9. Enqueue AI narrative generation ---
+  // Best-effort. If enqueue fails, the lead and results are still saved;
+  // the results page will simply show the static tier description without
+  // a personalized narrative.
+  if (isAiNarrativesEnabled()) {
+    try {
+      // Find the workspace's currently active prompt template (if any).
+      const { data: activePrompt } = await supabase
+        .from("prompt_templates")
+        .select("id")
+        .eq("workspace_id", CYRVANA_WORKSPACE_ID)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      await supabase.from("ai_narratives").insert({
+        session_id: input.session_id,
+        workspace_id: CYRVANA_WORKSPACE_ID,
+        prompt_template_id: activePrompt?.id ?? null,
+        status: "pending",
+      });
+    } catch (narrativeErr) {
+      console.error("[captureLead] failed to enqueue AI narrative", narrativeErr);
+      // Intentionally don't propagate.
     }
   }
 
