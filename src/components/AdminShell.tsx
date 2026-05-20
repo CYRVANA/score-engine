@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { AdminProfile } from "@/lib/admin-auth";
-import { isDestinationsEnabled } from "@/lib/feature-flags";
+import { isDestinationsEnabled, isAiNarrativesEnabled } from "@/lib/feature-flags";
 
 /**
  * Visual shell for protected admin pages: sidebar nav, user info, sign-out.
@@ -34,6 +34,9 @@ export function AdminShell({
             <NavLink href="/admin/quizzes" label="Quizzes" />
             {isDestinationsEnabled() && (
               <NavLink href="/admin/destinations" label="Destinations" />
+            )}
+            {isAiNarrativesEnabled() && (
+              <NavLink href="/admin/prompts" label="Prompts" />
             )}
             <NavLink href="/admin/analytics" label="Analytics" />
           </nav>
