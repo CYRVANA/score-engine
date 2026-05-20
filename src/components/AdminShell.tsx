@@ -35,7 +35,7 @@ export function AdminShell({
             {isDestinationsEnabled() && (
               <NavLink href="/admin/destinations" label="Destinations" />
             )}
-            <NavLink href="/admin/analytics" label="Analytics" badge="2.6" />
+            <NavLink href="/admin/analytics" label="Analytics" />
           </nav>
 
           <div className="mt-8 border-t border-white/10 pt-6">
