@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { brand } from "@/lib/brand";
 
 export default function ResultsNotFound() {
   return (
@@ -26,7 +27,7 @@ export default function ResultsNotFound() {
           href="/"
           className="mt-10 inline-flex items-center gap-2 rounded-md bg-brand px-6 py-3 text-base font-semibold text-white transition hover:bg-brand-600"
         >
-          Back to CYRVANA Assessments
+          Back to {brand.name}
           <span aria-hidden="true">→</span>
         </Link>
       </div>

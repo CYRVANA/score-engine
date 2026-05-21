@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { AdminProfile } from "@/lib/admin-auth";
 import { isDestinationsEnabled, isAiNarrativesEnabled } from "@/lib/feature-flags";
+import { brand } from "@/lib/brand";
 
 /**
  * Visual shell for protected admin pages: sidebar nav, user info, sign-out.
@@ -23,7 +24,7 @@ export function AdminShell({
         <aside className="hidden w-64 flex-shrink-0 border-r border-border bg-navy-deep p-6 text-white sm:flex sm:flex-col">
           <div className="mb-10">
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-brand">
-              CYRVANA · Admin
+              {brand.name} · Admin
             </p>
             <p className="mt-1 text-sm text-white/50">score-engine</p>
           </div>
@@ -62,7 +63,7 @@ export function AdminShell({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium uppercase tracking-[0.2em] text-brand">
-                  CYRVANA · Admin
+                  {brand.name} · Admin
                 </p>
                 <p className="text-sm font-semibold text-foreground">score-engine</p>
               </div>

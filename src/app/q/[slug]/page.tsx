@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { QuizTaker, type QuizData, type QuizOption } from "@/components/QuizTaker";
 import { startSession } from "./actions";
+import { brand } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,7 @@ export default async function QuizPage({ params }: { params: Promise<{ slug: str
       <header className="border-b border-border bg-background">
         <div className="mx-auto max-w-prose px-6 py-8 sm:py-10">
           <p className="mb-2 text-sm font-medium uppercase tracking-widest text-brand">
-            CYRVANA Assessment
+            {brand.name}
           </p>
           <h1 className="text-3xl font-bold leading-tight text-foreground sm:text-4xl">
             {quizData.title}

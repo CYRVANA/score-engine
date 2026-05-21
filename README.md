@@ -1,92 +1,138 @@
 # score-engine
 
-Lead-generation quiz platform for **CYRVANA**. A self-hosted alternative to ScoreApp, Outgrow, Interact, and Pointerpro.
+A self-hosted lead-generation quiz platform for cybersecurity consultancies and MSPs. Capture qualified leads through scored assessments, deliver results to your CRM, and generate AI-personalized analysis for every prospect.
 
-Production URL: **https://assess.cyrvana.com** &middot; Status: **Phase 0 scaffold**
+Built and used in production by [CYRVANA](https://cyrvana.com).
 
----
+## What it does
 
-
-
-
-## What this is
-
-A small-enterprise quiz funnel: author a scored multi-step assessment, publish it at a branded URL, capture leads at the email gate, ship them to HubSpot (and other destinations via the same adapter pattern). v2 layers Claude-generated personalized results on top.
-
-The full design rationale lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Read it before making non-trivial changes.
+- **Public quiz funnel** — multi-step assessments with scoring, tier results, and a bookmarkable results page
+- **Lead capture** — email gate with honeypot, rate limiting, and disposable-domain blocking
+- **Admin dashboard** — leads viewer, CSV export, full quiz builder, funnel analytics
+- **CRM delivery** — HubSpot adapter with outbox worker; generic webhook for everything else
+- **AI narratives** — Anthropic-powered personalized result analysis on the results page
+- **Email delivery** — branded result emails via Resend after narrative generation
 
 ## Stack
 
-- **Next.js 15** (App Router) + **TypeScript** + **Tailwind CSS**
-- **Supabase** (Postgres, Auth, RLS, Edge Functions) — multi-tenant ready from day 1
-- **Netlify** via `@netlify/plugin-nextjs`
-- **Cloudflare DNS** (DNS-only mode in front of Netlify)
-- **Termly** for consent management
-- **ZeptoMail** (Zoho) for transactional email — Phase 2+
-- **Anthropic Claude API** for AI-personalized results — Phase 3 (v2)
+- **Frontend**: Next.js 15 App Router + TypeScript + Tailwind CSS + shadcn/ui
+- **Backend**: Supabase (Postgres + Auth + RLS + Edge Functions)
+- **Hosting**: Netlify
+- **Email**: Resend (optional)
+- **AI**: Anthropic Claude API (optional)
 
-## Quick start
+## Getting started
+
+### 1. Clone and install
 
 ```bash
-git clone <repo-url> score-engine
+git clone https://github.com/CYRVANA/score-engine.git
 cd score-engine
 npm install
+```
+
+### 2. Set up Supabase
+
+Create a new Supabase project then run migrations in order via Supabase Studio → SQL Editor:
+
+```
+supabase/migrations/0001_schema.sql
+supabase/migrations/0002_rls.sql
+supabase/migrations/0003_seed.sql        ← edit workspace name before running
+supabase/migrations/0004_quiz_category.sql
+supabase/migrations/0005_rate_limits.sql
+supabase/migrations/0006_admin_profile.sql   ← edit your admin email before running
+```
+
+Migrations 0007–0012 are for optional features (destinations, AI, email). Apply them only when enabling the corresponding feature flag.
+
+### 3. Configure environment variables
+
+```bash
 cp .env.example .env.local
-supabase start
-supabase db reset
-npm run db:types
+```
+
+Required:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `NEXT_PUBLIC_SITE_URL`
+
+Brand (customize to your organization):
+```
+NEXT_PUBLIC_APP_NAME=Your Company Assessments
+NEXT_PUBLIC_WEBSITE_URL=https://your-company.com
+NEXT_PUBLIC_PRIVACY_URL=https://your-company.com/privacy
+NEXT_PUBLIC_CONTACT_EMAIL=hello@your-company.com
+```
+
+### 4. Run locally
+
+```bash
 npm run dev
 ```
 
-Open http://localhost:3000.
+Landing page: `http://localhost:3000`  
+Admin: `http://localhost:3000/admin`
 
-Full setup instructions: [`docs/LOCAL_DEV.md`](docs/LOCAL_DEV.md).
-Deployment: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+### 5. Configure admin access
+
+The admin dashboard uses magic-link auth. Edit `supabase/migrations/0006_admin_profile.sql`, replace the placeholder email with yours, then run the migration. Sign in at `/admin/login` to receive your magic link.
+
+## Feature flags
+
+All optional features default to **off**. Enable them by setting the env var to `"true"`.
+
+| Flag | Feature | Additional requirements |
+|---|---|---|
+| `FEATURE_DESTINATIONS` | HubSpot + webhook delivery | `DESTINATION_SECRETS_KEY` + `process-deliveries` Edge Function |
+| `FEATURE_AI_NARRATIVES` | AI personalized narratives | `ANTHROPIC_API_KEY` + `generate-narrative` Edge Function |
+| `FEATURE_EMAIL_NARRATIVES` | Email delivery via Resend | `RESEND_API_KEY` + `FEATURE_AI_NARRATIVES=true` |
+
+See `.env.example` for full configuration reference.
+
+## Deploying
+
+### Netlify
+
+Connect your repo to Netlify, set environment variables, and deploy. The `netlify.toml` is pre-configured.
+
+### Edge Functions
+
+```bash
+supabase login
+supabase link --project-ref your-project-ref
+
+# If FEATURE_DESTINATIONS=true:
+supabase functions deploy process-deliveries
+
+# If FEATURE_AI_NARRATIVES=true:
+supabase functions deploy generate-narrative
+```
+
+Set required secrets in Supabase Studio → Edge Functions → Manage secrets.
 
 ## Project structure
 
 ```
-score-engine/
-├── docs/                          Architecture, deployment, local dev
-├── supabase/
-│   ├── config.toml
-│   └── migrations/                0001 schema · 0002 RLS · 0003 seed
-├── src/
-│   ├── app/
-│   │   ├── layout.tsx             Root layout · Inter font · Termly mount
-│   │   ├── page.tsx               CYRVANA landing
-│   │   ├── globals.css            Tailwind + brand tokens
-│   │   ├── not-found.tsx          Branded 404
-│   │   └── q/[slug]/page.tsx      Public quiz taker (Phase 1 will expand)
-│   ├── components/
-│   │   └── TermlyCMP.tsx          Consent banner embed
-│   ├── lib/
-│   │   ├── supabase/              Server, browser, middleware clients
-│   │   └── utils.ts               cn() class merger
-│   ├── types/database.ts          Auto-generated by `npm run db:types`
-│   └── middleware.ts              Supabase session refresh
-├── .github/
-│   ├── workflows/ci.yml           Lint · typecheck · build
-│   ├── CODEOWNERS
-│   └── pull_request_template.md
-├── netlify.toml
-└── package.json
+src/
+  app/
+    page.tsx              Public landing page (dynamic quiz list)
+    q/[slug]/             Public quiz funnel + results
+    admin/                Admin dashboard (auth-gated)
+  components/             Shared UI components
+  lib/
+    brand.ts              Brand config (env-var driven, no hardcodes)
+    feature-flags.ts      Feature flag helpers
+    analytics.ts          Funnel metrics
+    scoring.ts            Quiz scoring logic
+supabase/
+  migrations/             Schema — run in numbered order
+  functions/
+    process-deliveries/   CRM delivery worker
+    generate-narrative/   AI narrative + email worker
 ```
-
-## Phase roadmap
-
-| Phase | Status | Scope |
-|---|---|---|
-| 0 — Scaffold | **this commit** | Repo · CI · Schema · Theme · Live shell at assess.cyrvana.com |
-| 1 — Public quiz | next | Real quiz renderer · scoring Server Action · email gate · lead capture |
-| 2 — Admin authoring | + 1 week | Magic-link auth · quiz builder · lead viewer · HubSpot adapter |
-| 3 — AI results (v2) | + 2 weeks | Claude-personalized result narratives · results emailed via ZeptoMail |
-| 4 — Multi-tenant (v3) | deferred | Workspace signup · per-workspace branding · Stripe billing |
-
-## Contributing
-
-`main` is protected. PRs only, CI must pass, one reviewer (yourself, for now). PR template prompts for what/why/how/testing.
 
 ## License
 
-UNLICENSED — private to CYRVANA.
+[MIT](LICENSE) — © 2026 CYRVANA. Built in production at [assess.cyrvana.com](https://assess.cyrvana.com).

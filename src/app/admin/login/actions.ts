@@ -33,7 +33,6 @@ export async function sendMagicLink(formData: FormData): Promise<SendMagicLinkRe
     return { ok: false, error: "Please enter a valid email address." };
   }
 
-  
   const supabase = await createClient();
 
   // shouldCreateUser=true: lets Supabase create the auth.users row on first
@@ -43,7 +42,7 @@ export async function sendMagicLink(formData: FormData): Promise<SendMagicLinkRe
     email,
     options: {
       shouldCreateUser: true,
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://assess.cyrvana.com"}/auth/callback`,
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/auth/callback`,
     },
   });
 

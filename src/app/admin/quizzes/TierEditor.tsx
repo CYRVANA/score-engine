@@ -196,7 +196,7 @@ export function TierEditor({
               value={draft.cta_url}
               onChange={(e) => patch({ cta_url: e.target.value })}
               disabled={isPending}
-              placeholder="https://cyrvana.com/services/vciso"
+              placeholder="https://your-company.com/services"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-base text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:opacity-60"
             />
           </Field>

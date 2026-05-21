@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { brand } from "@/lib/brand";
 
 export default function NotFound() {
   return (
@@ -16,7 +17,7 @@ export default function NotFound() {
           404 · Not found
         </p>
         <h1 className="mt-4 text-5xl font-bold leading-tight sm:text-6xl">
-          That assessment isn't here.
+          That assessment isn&apos;t here.
         </h1>
         <p className="mt-6 text-lg leading-relaxed text-white/70">
           The quiz may have been unpublished, renamed, or never existed at this URL.
@@ -25,7 +26,7 @@ export default function NotFound() {
           href="/"
           className="mt-10 inline-flex items-center gap-2 rounded-md bg-brand px-6 py-3 text-base font-semibold text-white transition hover:bg-brand-600"
         >
-          Back to CYRVANA Assessments
+          Back to {brand.name}
           <span aria-hidden="true">→</span>
         </Link>
       </div>

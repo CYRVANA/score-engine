@@ -88,7 +88,7 @@ export async function provisionHubSpotProperties(
       type: "number",
       fieldType: "number",
       groupName: "contactinformation",
-      description: "The score this contact received on a CYRVANA assessment.",
+      description: "The score this contact received on a score-engine assessment.",
     },
     {
       name: "score_engine_tier",
