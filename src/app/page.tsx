@@ -1,9 +1,29 @@
 import Link from "next/link";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
-export default function HomePage() {
+export const dynamic = "force-dynamic";
+
+/**
+ * Public landing page at assess.cyrvana.com.
+ *
+ * Lists all published quizzes so prospects can find and start one.
+ * Falls back to a single CTA if there's only one published quiz.
+ */
+export default async function HomePage() {
+  const supabase = createServiceRoleClient();
+
+  // Load all published quizzes for the CYRVANA workspace.
+  const { data: quizzes } = await supabase
+    .from("quizzes")
+    .select("id, title, slug, description")
+    .eq("status", "published")
+    .order("published_at", { ascending: false });
+
+  const published = quizzes ?? [];
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-navy-deep text-white">
-      {/* Atmospheric gradient backdrop — navy → deeper navy with a single warm accent. */}
+      {/* Atmospheric gradient backdrop */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0"
@@ -22,53 +42,97 @@ export default function HomePage() {
               CYRVANA Assessments
             </span>
           </div>
-          <span className="text-xs text-white/40">score-engine · v0.1</span>
+          <a
+            href="https://cyrvana.com"
+            className="text-xs text-white/40 transition hover:text-white/70"
+          >
+            cyrvana.com →
+          </a>
         </header>
 
         {/* Hero */}
-        <section className="flex flex-1 flex-col justify-center py-24">
+        <section className="flex flex-1 flex-col justify-center py-20">
           <p className="mb-6 text-sm font-medium uppercase tracking-[0.2em] text-brand">
-            Phase 0 · Scaffold live
+            CYRVANA · Free Assessment
           </p>
           <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] sm:text-6xl lg:text-7xl">
-            Assess. Score. <span className="text-brand">Engage.</span>
+            Know your risk. <span className="text-brand">Start the conversation.</span>
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/70 sm:text-xl">
-            A lead-generation quiz platform purpose-built for CYRVANA — cybersecurity
-            readiness assessments that convert browsers into qualified conversations.
+            Take a free cybersecurity assessment built by CYRVANA's vCISO team.
+            Get a scored result and a personalized analysis — in under five minutes.
           </p>
 
-          <div className="mt-12 flex flex-wrap gap-4">
-            <Link
-              href="/q/cyber-readiness"
-              className="inline-flex items-center gap-2 rounded-md bg-brand px-6 py-3 text-base font-semibold text-white transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-navy-deep"
-            >
-              Try the demo quiz
-              <span aria-hidden="true">→</span>
-            </Link>
-            <a
-              href="https://cyrvana.com"
-              className="inline-flex items-center gap-2 rounded-md border border-white/20 px-6 py-3 text-base font-semibold text-white transition hover:bg-white/5"
-            >
-              cyrvana.com
-            </a>
-          </div>
+          {published.length === 1 && (
+            <div className="mt-10">
+              <Link
+                href={`/q/${published[0].slug}`}
+                className="inline-flex items-center gap-2 rounded-md bg-brand px-8 py-4 text-base font-semibold text-white transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-navy-deep"
+              >
+                {published[0].title}
+                <span aria-hidden="true">→</span>
+              </Link>
+              {published[0].description && (
+                <p className="mt-3 text-sm text-white/50">{published[0].description}</p>
+              )}
+            </div>
+          )}
+
+          {published.length === 0 && (
+            <div className="mt-10">
+              <p className="text-sm text-white/40">Assessments coming soon.</p>
+            </div>
+          )}
         </section>
 
-        {/* Status grid — what's live, what's next */}
-        <section className="grid gap-6 border-t border-white/10 py-12 sm:grid-cols-3">
-          <StatusCard label="Phase 0" status="Complete" detail="Repo · DNS · SSL · Theme · Schema" />
-          <StatusCard label="Phase 1" status="Next" detail="Public quiz + lead capture" />
-          <StatusCard label="Phase 2" status="Planned" detail="Admin UI · HubSpot adapter" />
+        {/* Quiz grid — shown when there are multiple published quizzes */}
+        {published.length > 1 && (
+          <section className="border-t border-white/10 py-12">
+            <h2 className="mb-6 text-sm font-semibold uppercase tracking-widest text-white/50">
+              Available assessments
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {published.map((quiz) => (
+                <Link
+                  key={quiz.id}
+                  href={`/q/${quiz.slug}`}
+                  className="group rounded-lg border border-white/10 bg-navy/40 p-6 backdrop-blur transition hover:border-brand/40 hover:bg-navy/60"
+                >
+                  <h3 className="font-semibold text-white group-hover:text-brand">
+                    {quiz.title}
+                  </h3>
+                  {quiz.description && (
+                    <p className="mt-2 text-sm leading-relaxed text-white/60">
+                      {quiz.description}
+                    </p>
+                  )}
+                  <p className="mt-4 text-xs font-semibold uppercase tracking-widest text-brand/70 group-hover:text-brand">
+                    Start assessment →
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Trust line */}
+        <section className="border-t border-white/10 py-8">
+          <p className="text-xs leading-relaxed text-white/30">
+            Assessments are free. Your results include a scored tier, a breakdown of your
+            answers, and a personalized analysis. No sales call required to see your results.
+          </p>
         </section>
 
         {/* Footer */}
         <footer className="mt-auto flex flex-col gap-2 border-t border-white/10 pt-6 text-xs text-white/40 sm:flex-row sm:items-center sm:justify-between">
           <span>&copy; {new Date().getFullYear()} CYRVANA. All rights reserved.</span>
           <span>
-            Built on Next.js + Supabase ·{" "}
             <a href="https://cyrvana.com/privacy" className="underline hover:text-white/70">
               Privacy
+            </a>
+            {" · "}
+            <a href="https://cyrvana.com" className="hover:text-white/70">
+              cyrvana.com
             </a>
           </span>
         </footer>
@@ -77,36 +141,3 @@ export default function HomePage() {
   );
 }
 
-function StatusCard({
-  label,
-  status,
-  detail,
-}: {
-  label: string;
-  status: string;
-  detail: string;
-}) {
-  const isComplete = status === "Complete";
-  const isNext = status === "Next";
-  return (
-    <div className="rounded-lg border border-white/10 bg-navy/40 p-6 backdrop-blur">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-widest text-white/50">
-          {label}
-        </span>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-            isComplete
-              ? "bg-brand/20 text-brand-200"
-              : isNext
-                ? "bg-white/10 text-white/80"
-                : "bg-white/5 text-white/40"
-          }`}
-        >
-          {status}
-        </span>
-      </div>
-      <p className="mt-4 text-sm leading-relaxed text-white/70">{detail}</p>
-    </div>
-  );
-}

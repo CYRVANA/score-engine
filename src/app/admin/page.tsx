@@ -63,22 +63,19 @@ export default async function AdminHome() {
       </section>
 
       <section className="mt-12 rounded-lg border border-border bg-background p-6 sm:p-8">
-        <h2 className="text-xl font-bold text-foreground">Phase 2.1 scaffold</h2>
-        <p className="mt-3 text-sm leading-relaxed text-muted">
-          You&apos;re signed in and the admin shell is wired up. Sidebar links
-          marked <span className="font-mono text-xs">2.2 / 2.3 / 2.5 / 2.6</span> activate
-          in the next deploys: Leads viewer, Quizzes list, Destinations (HubSpot),
-          and Analytics.
-        </p>
-        <p className="mt-3 text-sm leading-relaxed text-muted">
-          For now you can verify the auth flow works end-to-end: sign out, then sign
-          back in.
-        </p>
+        <h2 className="text-xl font-bold text-foreground">Quick links</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <QuickLink href="/admin/leads" label="Leads" description="View and export captured leads" />
+          <QuickLink href="/admin/quizzes" label="Quizzes" description="Build and manage assessments" />
+          <QuickLink href="/admin/analytics" label="Analytics" description="Funnel metrics and trend data" />
+          <QuickLink href="/admin/destinations" label="Destinations" description="HubSpot and webhook delivery" />
+          <QuickLink href="/admin/prompts" label="AI Prompts" description="Edit the narrative prompt template" />
+          <QuickLink href="https://assess.cyrvana.com/q/cyber-readiness" label="Take the assessment" description="See the live quiz as a prospect would" external />
+        </div>
       </section>
     </AdminShell>
   );
 }
-
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
@@ -86,5 +83,34 @@ function StatCard({ label, value }: { label: string; value: number }) {
       <p className="text-xs font-medium uppercase tracking-widest text-muted">{label}</p>
       <p className="mt-2 text-4xl font-bold text-foreground">{value.toLocaleString()}</p>
     </div>
+  );
+}
+
+function QuickLink({
+  href,
+  label,
+  description,
+  external,
+}: {
+  href: string;
+  label: string;
+  description: string;
+  external?: boolean;
+}) {
+  const props = external
+    ? { target: "_blank", rel: "noopener noreferrer" }
+    : {};
+  return (
+    <a
+      href={href}
+      {...props}
+      className="group rounded-md border border-border bg-background p-4 transition hover:border-brand/40 hover:bg-brand/5"
+    >
+      <p className="text-sm font-semibold text-foreground group-hover:text-brand">
+        {label}
+        {external && <span className="ml-1 text-xs text-muted">↗</span>}
+      </p>
+      <p className="mt-1 text-xs text-muted">{description}</p>
+    </a>
   );
 }
