@@ -38,7 +38,7 @@ export const brand = {
   tagline: process.env.NEXT_PUBLIC_APP_TAGLINE ?? "Assess. Score. Engage.",
 
   /** The deployed base URL. Used for canonical URLs and email links. */
-  siteUrl: (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, ""),
+  siteUrl: (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, ""),
 
   /** Company website. If empty, the footer website link is hidden. */
   websiteUrl: process.env.NEXT_PUBLIC_WEBSITE_URL ?? "",
