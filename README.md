@@ -4,6 +4,7 @@ A self-hosted lead-generation quiz platform for cybersecurity consultancies and 
 
 Built and used in production by [CYRVANA](https://cyrvana.com).
 
+
 ## What it does
 
 - **Public quiz funnel** — multi-step assessments with scoring, tier results, and a bookmarkable results page
