@@ -285,3 +285,118 @@ function buildDailySeries(
   }
   return series;
 }
+
+// ============================================================================
+// Document download analytics (Phase 3c)
+// ============================================================================
+
+export type DocumentDownloadStat = {
+  document_id: string;
+  title: string;
+  slug: string;
+  total: number;
+  gated: number;
+  anonymous: number;
+};
+
+export type DownloadSourceStat = {
+  source: string;
+  count: number;
+};
+
+export type DocumentDownloadReport = {
+  totalDownloads: number;
+  totalAnonymous: number;
+  totalGated: number;
+  byDocument: DocumentDownloadStat[];
+  bySource: DownloadSourceStat[];
+  windowDays: number;
+};
+
+/**
+ * Compute workspace-wide document download analytics over a lookback window.
+ *
+ * Unlike quiz analytics, this is workspace-wide (not per-quiz) because
+ * downloads aren't tied to a specific quiz — they happen via /get/[slug],
+ * quiz results pages, and shared links.
+ */
+export async function computeDocumentDownloads(
+  workspaceId: string,
+  windowDays = 30,
+): Promise<DocumentDownloadReport> {
+  const { createServiceRoleClient } = await import("@/lib/supabase/server");
+  const supabase = createServiceRoleClient();
+
+  const since = daysAgoIso(windowDays);
+
+  const { data: events } = await supabase
+    .from("document_downloads")
+    .select("document_id, is_gated, utm_source, referrer, downloaded_at")
+    .eq("workspace_id", workspaceId)
+    .gte("downloaded_at", since);
+
+  const rows = events ?? [];
+
+  // Load document titles for the ones that have downloads.
+  const docIds = Array.from(new Set(rows.map((r) => r.document_id)));
+  const titleMap: Record<string, { title: string; slug: string }> = {};
+
+  if (docIds.length > 0) {
+    const { data: docs } = await supabase
+      .from("documents")
+      .select("id, title, slug")
+      .in("id", docIds);
+    for (const d of docs ?? []) {
+      titleMap[d.id] = { title: d.title, slug: d.slug };
+    }
+  }
+
+  // Aggregate by document.
+  const byDocMap: Record<string, DocumentDownloadStat> = {};
+  for (const row of rows) {
+    const meta = titleMap[row.document_id] ?? { title: "(deleted)", slug: "" };
+    if (!byDocMap[row.document_id]) {
+      byDocMap[row.document_id] = {
+        document_id: row.document_id,
+        title: meta.title,
+        slug: meta.slug,
+        total: 0,
+        gated: 0,
+        anonymous: 0,
+      };
+    }
+    const stat = byDocMap[row.document_id];
+    stat.total += 1;
+    if (row.is_gated) stat.gated += 1;
+    else stat.anonymous += 1;
+  }
+
+  // Aggregate by source (utm_source, falling back to referrer host, then "direct").
+  const bySourceMap: Record<string, number> = {};
+  for (const row of rows) {
+    let source = row.utm_source?.trim() || "";
+    if (!source && row.referrer) {
+      try {
+        source = new URL(row.referrer).hostname.replace(/^www\./, "");
+      } catch {
+        source = "";
+      }
+    }
+    if (!source) source = "direct";
+    bySourceMap[source] = (bySourceMap[source] ?? 0) + 1;
+  }
+
+  const byDocument = Object.values(byDocMap).sort((a, b) => b.total - a.total);
+  const bySource = Object.entries(bySourceMap)
+    .map(([source, count]) => ({ source, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return {
+    totalDownloads: rows.length,
+    totalAnonymous: rows.filter((r) => !r.is_gated).length,
+    totalGated: rows.filter((r) => r.is_gated).length,
+    byDocument,
+    bySource,
+    windowDays,
+  };
+}

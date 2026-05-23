@@ -33,6 +33,7 @@ export function AdminShell({
             <NavLink href="/admin" label="Dashboard" />
             <NavLink href="/admin/leads" label="Leads" />
             <NavLink href="/admin/quizzes" label="Quizzes" />
+            <NavLink href="/admin/documents" label="Documents" />
             {isDestinationsEnabled() && (
               <NavLink href="/admin/destinations" label="Destinations" />
             )}

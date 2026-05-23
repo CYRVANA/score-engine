@@ -10,14 +10,6 @@ export type NarrativeStatusResult =
 
 /**
  * Poll narrative status for a given session.
- *
- * Called repeatedly by the results page client component until the narrative
- * resolves to "ready" or "failed". Returns "missing" if no narrative row
- * exists (i.e. AI narratives are disabled for this deployment).
- *
- * Uses the service-role client because anonymous quiz takers don't have a
- * Supabase Auth session. The session UUID acts as the access token, same
- * pattern as the rest of the results page.
  */
 export async function getNarrativeStatus(
   sessionId: string,
@@ -44,6 +36,69 @@ export async function getNarrativeStatus(
   if (data.status === "failed") {
     return { status: "failed", error: data.last_error ?? "Generation failed" };
   }
-  // pending / retrying / in_flight all read as "pending" to the UI
   return { status: "pending" };
 }
+
+export type DocumentForDownload = {
+  id: string;
+  title: string;
+  description: string | null;
+  access_level: string;
+  download_url: string;
+};
+
+/**
+ * Fetch documents the lead has access to for this session.
+ *
+ * Returns a branded proxy URL (/download/[slug]?s=<lead_id>) for each.
+ * The proxy logs the download event and redirects to the file — no signed
+ * URLs are generated here, and no Supabase Storage URL is exposed client-side.
+ *
+ * Called server-side on the results page.
+ */
+export async function getDocumentsForSession(
+  sessionId: string,
+  leadId: string,
+): Promise<DocumentForDownload[]> {
+  const supabase = createServiceRoleClient();
+
+  const { data: grants, error } = await supabase
+    .from("document_access")
+    .select(
+      `
+      id, expires_at,
+      documents:document_id (
+        id, title, description, slug, access_level
+      )
+    `,
+    )
+    .eq("lead_id", leadId);
+
+  if (error || !grants || grants.length === 0) return [];
+
+  const results: DocumentForDownload[] = [];
+
+  for (const grant of grants) {
+    if (grant.expires_at && new Date(grant.expires_at) < new Date()) continue;
+
+    const doc = Array.isArray(grant.documents) ? grant.documents[0] : grant.documents;
+    if (!doc) continue;
+
+    // Public docs don't need the lead id; gated docs do (proxy re-verifies).
+    const downloadUrl =
+      doc.access_level === "public"
+        ? `/download/${doc.slug}`
+        : `/download/${doc.slug}?s=${leadId}`;
+
+    results.push({
+      id: doc.id,
+      title: doc.title,
+      description: doc.description,
+      access_level: doc.access_level,
+      download_url: downloadUrl,
+    });
+  }
+
+  return results;
+}
+

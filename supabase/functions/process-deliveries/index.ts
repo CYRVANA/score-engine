@@ -92,8 +92,14 @@ Deno.serve(async (_req: Request) => {
   }
 
   if (!deliveries || deliveries.length === 0) {
+    const docStats = await drainDocumentDeliveries(supabase);
     return new Response(
-      JSON.stringify({ ok: true, processed: 0, durationMs: Date.now() - startedAt }),
+      JSON.stringify({
+        ok: true,
+        processed: 0,
+        document_deliveries: docStats,
+        durationMs: Date.now() - startedAt,
+      }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   }
@@ -203,12 +209,18 @@ Deno.serve(async (_req: Request) => {
     }
   }
 
+  // ==========================================================================
+  // 4. Drain document_deliveries — HubSpot contact updates for document events.
+  // ==========================================================================
+  const docStats = await drainDocumentDeliveries(supabase);
+
   return new Response(
     JSON.stringify({
       ok: true,
       processed: deliveries.length,
       succeeded,
       failed,
+      document_deliveries: docStats,
       durationMs: Date.now() - startedAt,
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
@@ -414,6 +426,276 @@ async function deliverGenericWebhook(
       ok: false,
       error: `Webhook ${response.status}: ${text.slice(0, 500)}`,
       retriable,
+    };
+  } catch (e) {
+    const err = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: `Network error: ${err}`, retriable: true };
+  }
+}
+
+// ============================================================================
+// Document delivery drain — HubSpot contact updates for document events.
+// ============================================================================
+
+type DocDeliveryStats = { attempted: number; succeeded: number; failed: number };
+
+async function drainDocumentDeliveries(
+  supabase: ReturnType<typeof createClient>,
+): Promise<DocDeliveryStats> {
+  const stats: DocDeliveryStats = { attempted: 0, succeeded: 0, failed: 0 };
+
+  const { data: rows, error } = await supabase
+    .from("document_deliveries")
+    .select(
+      `
+      id, lead_id, destination_id, attempt_count,
+      document_access:access_id (
+        document_id,
+        documents:document_id ( title )
+      )
+    `,
+    )
+    .in("status", ["pending", "retrying"])
+    .lte("next_attempt_at", new Date().toISOString())
+    .order("next_attempt_at", { ascending: true })
+    .limit(BATCH_SIZE);
+
+  if (error || !rows || rows.length === 0) return stats;
+
+  // Mark in_flight.
+  const rowIds = rows.map((r: { id: string }) => r.id);
+  await supabase
+    .from("document_deliveries")
+    .update({ status: "in_flight", last_attempt_at: new Date().toISOString() })
+    .in("id", rowIds);
+
+  for (const row of rows as Array<{
+    id: string;
+    lead_id: string;
+    destination_id: string;
+    attempt_count: number;
+    document_access:
+      | {
+          document_id: string;
+          documents: { title: string } | { title: string }[] | null;
+        }
+      | Array<{
+          document_id: string;
+          documents: { title: string } | { title: string }[] | null;
+        }>
+      | null;
+  }>) {
+    stats.attempted++;
+
+    const access = Array.isArray(row.document_access)
+      ? row.document_access[0]
+      : row.document_access;
+    const doc = access
+      ? Array.isArray(access.documents)
+        ? access.documents[0]
+        : access.documents
+      : null;
+    const docTitle = doc?.title ?? "Unknown resource";
+
+    // Load lead email.
+    const { data: lead } = await supabase
+      .from("leads")
+      .select("email")
+      .eq("id", row.lead_id)
+      .single();
+
+    if (!lead?.email) {
+      await supabase
+        .from("document_deliveries")
+        .update({ status: "failed", last_error: "lead_email_missing" })
+        .eq("id", row.id);
+      stats.failed++;
+      continue;
+    }
+
+    // Load destination config.
+    const { data: dest } = await supabase
+      .from("destinations")
+      .select("type, config_encrypted, active")
+      .eq("id", row.destination_id)
+      .single();
+
+    if (!dest || !dest.active) {
+      await supabase
+        .from("document_deliveries")
+        .update({ status: "failed", last_error: "destination_inactive_or_missing" })
+        .eq("id", row.id);
+      stats.failed++;
+      continue;
+    }
+
+    if (dest.type !== "hubspot") {
+      // Only HubSpot document updates are implemented; skip others gracefully.
+      await supabase
+        .from("document_deliveries")
+        .update({ status: "delivered" })
+        .eq("id", row.id);
+      stats.succeeded++;
+      continue;
+    }
+
+    let config: Record<string, unknown>;
+    try {
+      const { data: decrypted, error: dErr } = await supabase.rpc(
+        "decrypt_destination_config",
+        { cipher: dest.config_encrypted },
+      );
+      if (dErr) throw new Error(dErr.message);
+      config = decrypted as Record<string, unknown>;
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      await supabase
+        .from("document_deliveries")
+        .update({ status: "failed", last_error: `decrypt_failed: ${err}` })
+        .eq("id", row.id);
+      stats.failed++;
+      continue;
+    }
+
+    const token = typeof config.access_token === "string" ? config.access_token : "";
+    if (!token) {
+      await supabase
+        .from("document_deliveries")
+        .update({ status: "failed", last_error: "missing_access_token" })
+        .eq("id", row.id);
+      stats.failed++;
+      continue;
+    }
+
+    // Update HubSpot contact with document download properties.
+    const result = await updateHubSpotContactDocuments(
+      token,
+      lead.email,
+      docTitle,
+    );
+
+    const nextAttempt = row.attempt_count + 1;
+    if (result.ok) {
+      await supabase
+        .from("document_deliveries")
+        .update({
+          status: "delivered",
+          attempt_count: nextAttempt,
+          external_id: result.contact_id,
+          last_error: null,
+        })
+        .eq("id", row.id);
+      stats.succeeded++;
+    } else {
+      const terminal = !result.retriable || nextAttempt >= MAX_ATTEMPTS;
+      await supabase
+        .from("document_deliveries")
+        .update({
+          status: terminal ? "failed" : "retrying",
+          attempt_count: nextAttempt,
+          last_error: result.error,
+          next_attempt_at: terminal
+            ? undefined
+            : new Date(
+                Date.now() +
+                  BACKOFF_SECONDS[Math.min(nextAttempt, BACKOFF_SECONDS.length - 1)] * 1000,
+              ).toISOString(),
+        })
+        .eq("id", row.id);
+      stats.failed++;
+    }
+  }
+
+  return stats;
+}
+
+/**
+ * Update a HubSpot contact's document download properties.
+ *
+ * Strategy:
+ *   1. GET the contact to read existing score_engine_downloads list.
+ *   2. Append the new document title (if not already present).
+ *   3. PATCH the contact with the updated three properties.
+ *
+ * This means: a contact that downloads "Starter Playbook" and later downloads
+ * "Advanced Guide" will have:
+ *   score_engine_downloads = "Starter Playbook; Advanced Guide"
+ *   score_engine_download_count = 2
+ *   score_engine_last_download = "Advanced Guide"
+ */
+async function updateHubSpotContactDocuments(
+  token: string,
+  email: string,
+  docTitle: string,
+): Promise<{ ok: true; contact_id?: string } | { ok: false; error: string; retriable: boolean }> {
+  try {
+    // Step 1: GET existing contact to read downloads list.
+    const getUrl = `https://api.hubapi.com/crm/v3/objects/contacts/${encodeURIComponent(email)}?idProperty=email&properties=score_engine_downloads,score_engine_download_count`;
+    const getResp = await fetch(getUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    let existingDownloads = "";
+    let contactId: string | undefined;
+
+    if (getResp.ok) {
+      const data = await getResp.json().catch(() => ({}));
+      contactId = data?.id;
+      existingDownloads =
+        data?.properties?.score_engine_downloads ?? "";
+    } else if (getResp.status === 404) {
+      // Contact doesn't exist yet — the destination_delivery for the lead
+      // capture will create it. For now, just set with this document only.
+      existingDownloads = "";
+    } else {
+      const text = await getResp.text().catch(() => "");
+      return {
+        ok: false,
+        error: `HubSpot GET ${getResp.status}: ${text.slice(0, 300)}`,
+        retriable: getResp.status >= 500 || getResp.status === 429,
+      };
+    }
+
+    // Step 2: Build updated downloads list.
+    const existingList = existingDownloads
+      ? existingDownloads.split(";").map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    let updatedList = existingList;
+    if (!existingList.includes(docTitle)) {
+      updatedList = [...existingList, docTitle];
+    }
+
+    const updatedDownloads = updatedList.join("; ");
+    const downloadCount = updatedList.length;
+
+    // Step 3: PATCH with updated properties.
+    const patchUrl = `https://api.hubapi.com/crm/v3/objects/contacts/${encodeURIComponent(email)}?idProperty=email`;
+    const patchResp = await fetch(patchUrl, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        properties: {
+          score_engine_last_download: docTitle,
+          score_engine_download_count: downloadCount,
+          score_engine_downloads: updatedDownloads,
+        },
+      }),
+    });
+
+    if (patchResp.ok) {
+      const data = await patchResp.json().catch(() => ({}));
+      return { ok: true, contact_id: data?.id ?? contactId };
+    }
+
+    const text = await patchResp.text().catch(() => "");
+    return {
+      ok: false,
+      error: `HubSpot PATCH ${patchResp.status}: ${text.slice(0, 300)}`,
+      retriable: patchResp.status >= 500 || patchResp.status === 429,
     };
   } catch (e) {
     const err = e instanceof Error ? e.message : String(e);

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { isAiNarrativesEnabled } from "@/lib/feature-flags";
 import { NarrativeLoader } from "./NarrativeLoader";
+import { DocumentDownloads } from "./DocumentDownloads";
 import { brand } from "@/lib/brand";
 
 // Force dynamic — each session is unique, no point caching.
@@ -47,6 +48,7 @@ export default async function ResultsPage({
       id,
       score,
       completed_at,
+      lead_id,
       quizzes:quiz_id (
         id,
         slug,
@@ -173,6 +175,12 @@ export default async function ResultsPage({
         {isAiNarrativesEnabled() && (
           <NarrativeLoader sessionId={session.id} />
         )}
+
+        {/* Document downloads — auto-granted on lead capture for this tier */}
+        <DocumentDownloads
+          sessionId={session.id}
+          leadId={session.lead_id ?? null}
+        />
 
         {/* Answer breakdown */}
         {sortedAnswers.length > 0 && (
