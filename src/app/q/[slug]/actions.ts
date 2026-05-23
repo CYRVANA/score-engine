@@ -355,7 +355,6 @@ export async function captureLead(input: LeadCaptureInput): Promise<CaptureResul
   // a personalized narrative.
   if (isAiNarrativesEnabled()) {
     try {
-      // Find the workspace's currently active prompt template (if any).
       const { data: activePrompt } = await supabase
         .from("prompt_templates")
         .select("id")
@@ -371,8 +370,80 @@ export async function captureLead(input: LeadCaptureInput): Promise<CaptureResul
       });
     } catch (narrativeErr) {
       console.error("[captureLead] failed to enqueue AI narrative", narrativeErr);
-      // Intentionally don't propagate.
     }
+  }
+
+  // --- 10. Auto-grant tier documents + enqueue document deliveries ---
+  // Best-effort. Grants the lead access to ALL documents attached to their
+  // result tier — both public and email_gated. The quiz taker already passed
+  // the email gate, so they get every resource for their tier with direct
+  // download (no second gate). Then enqueues HubSpot update deliveries.
+  try {
+    const resultTierId = session.result_tiers
+      ? Array.isArray(session.result_tiers)
+        ? session.result_tiers[0]?.id
+        : (session.result_tiers as { id: string } | null)?.id
+      : null;
+
+    if (resultTierId) {
+      // Find documents attached to this tier.
+      const { data: tierDocs } = await supabase
+        .from("tier_documents")
+        .select("document_id, documents:document_id (id, access_level, title)")
+        .eq("tier_id", resultTierId);
+
+      // Grant all non-paid documents. Paid docs (Phase 4) require purchase,
+      // so they're never auto-granted here.
+      const grantableDocs = (tierDocs ?? []).filter((td) => {
+        const doc = Array.isArray(td.documents) ? td.documents[0] : td.documents;
+        return doc && doc.access_level !== "paid";
+      });
+
+      if (grantableDocs.length > 0) {
+        const now = new Date().toISOString();
+
+        // Upsert access grants (idempotent — retaking the quiz doesn't duplicate).
+        const accessInserts = grantableDocs.map((td) => ({
+          document_id: td.document_id,
+          lead_id: lead.id,
+          granted_by: "quiz_result" as const,
+          granted_at: now,
+        }));
+
+        const { data: accessRows } = await supabase
+          .from("document_access")
+          .upsert(accessInserts, {
+            onConflict: "lead_id,document_id",
+            ignoreDuplicates: true,
+          })
+          .select("id");
+
+        // Enqueue document deliveries for HubSpot updates.
+        if (isDestinationsEnabled() && accessRows && accessRows.length > 0) {
+          const { data: destinations } = await supabase
+            .from("destinations")
+            .select("id")
+            .eq("workspace_id", CYRVANA_WORKSPACE_ID)
+            .eq("active", true)
+            .or(`quiz_id.is.null,quiz_id.eq.${input.quiz_id}`);
+
+          if (destinations && destinations.length > 0) {
+            await supabase.from("document_deliveries").insert(
+              accessRows.flatMap((access) =>
+                destinations.map((d) => ({
+                  access_id: access.id,
+                  lead_id: lead.id,
+                  destination_id: d.id,
+                  status: "pending",
+                })),
+              ),
+            );
+          }
+        }
+      }
+    }
+  } catch (docErr) {
+    console.error("[captureLead] failed to grant documents", docErr);
   }
 
   return { ok: true, lead_id: lead.id };

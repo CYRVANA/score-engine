@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { TermlyCMP } from "@/components/TermlyCMP";
+import { brand } from "@/lib/brand";
 import "./globals.css";
 
 const inter = Inter({
@@ -11,16 +12,15 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://assess.cyrvana.com"),
+  metadataBase: new URL(brand.siteUrl),
   title: {
-    default: "CYRVANA Assessments",
-    template: "%s | CYRVANA",
+    default: brand.name,
+    template: `%s | ${brand.name}`,
   },
-  description:
-    "Cybersecurity readiness assessments and lead-generation quizzes from CYRVANA.",
+  description: brand.tagline,
   openGraph: {
     type: "website",
-    siteName: "CYRVANA Assessments",
+    siteName: brand.name,
   },
   robots: {
     index: true,

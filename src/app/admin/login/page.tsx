@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getOptionalAdmin } from "@/lib/admin-auth";
 import { LoginForm } from "./LoginForm";
+import { brand } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
@@ -35,8 +36,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
       <div className="relative mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
         <div className="mb-10 text-center">
           <p className="mb-3 text-sm font-medium uppercase tracking-[0.2em] text-brand">
-            CYRVANA · Admin
-          </p>
+              {brand.name} · Admin
+            </p>
           <h1 className="text-3xl font-bold">Sign in</h1>
           <p className="mt-3 text-sm leading-relaxed text-white/60">
             We&apos;ll email you a one-time link. No password required.
@@ -56,14 +57,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
 
         <p className="mt-8 text-center text-xs text-white/40">
           <Link href="/" className="hover:text-white/70">
-            ← Back to CYRVANA Assessments
+          ← Back to {brand.name}
           </Link>
         </p>
       </div>
     </main>
   );
 }
-
 
 function errorMessageFor(code: string | undefined): string | null {
   switch (code) {

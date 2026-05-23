@@ -75,7 +75,7 @@ export function LoginForm() {
           autoFocus
           disabled={isPending}
           className="w-full rounded-md border border-white/15 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:opacity-60"
-          placeholder="you@cyrvana.com"
+          placeholder="you@your-domain.com"
         />
       </div>
 
@@ -85,7 +85,6 @@ export function LoginForm() {
         </p>
       )}
 
-      
       <button
         type="submit"
         disabled={isPending}

@@ -1,5 +1,7 @@
 "use client";
 
+import { brand } from "@/lib/brand";
+
 import { useState, type FormEvent } from "react";
 
 export type LeadFormData = {
@@ -172,16 +174,20 @@ export function EmailGate({ score, onSubmit, isPending }: EmailGateProps) {
               className="mt-0.5 h-4 w-4 flex-shrink-0 cursor-pointer accent-brand"
             />
             <span className="text-sm leading-relaxed text-foreground">
-              I agree to receive my assessment results and occasional cybersecurity
-              insights from CYRVANA. I can unsubscribe at any time.{" "}
-              <a
-                href="https://cyrvana.com/privacy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-semibold text-brand underline-offset-2 hover:underline"
-              >
-                Privacy policy
-              </a>
+              I agree to receive my assessment results and occasional updates
+              from {brand.name}. I can unsubscribe at any time.{" "}
+              {brand.privacyUrl ? (
+                <a
+                  href={brand.privacyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-brand underline-offset-2 hover:underline"
+                >
+                  Privacy policy
+                </a>
+              ) : (
+                <span className="text-muted">See our privacy policy for details.</span>
+              )}
               .
             </span>
           </label>

@@ -88,7 +88,7 @@ export async function provisionHubSpotProperties(
       type: "number",
       fieldType: "number",
       groupName: "contactinformation",
-      description: "The score this contact received on a CYRVANA assessment.",
+      description: "The score this contact received on a score-engine assessment.",
     },
     {
       name: "score_engine_tier",
@@ -121,6 +121,30 @@ export async function provisionHubSpotProperties(
       fieldType: "date",
       groupName: "contactinformation",
       description: "When the contact submitted the quiz email gate.",
+    },
+    {
+      name: "score_engine_last_download",
+      label: "score-engine Last Download",
+      type: "string",
+      fieldType: "text",
+      groupName: "contactinformation",
+      description: "Title of the most recently downloaded resource from score-engine.",
+    },
+    {
+      name: "score_engine_download_count",
+      label: "score-engine Download Count",
+      type: "number",
+      fieldType: "number",
+      groupName: "contactinformation",
+      description: "Total number of resources this contact has downloaded.",
+    },
+    {
+      name: "score_engine_downloads",
+      label: "score-engine Downloads",
+      type: "string",
+      fieldType: "text",
+      groupName: "contactinformation",
+      description: "Semicolon-separated list of all resources this contact has downloaded.",
     },
   ];
 

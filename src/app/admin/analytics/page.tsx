@@ -8,6 +8,7 @@ import {
   listQuizzesForAnalytics,
   pickDefaultQuiz,
   computeAnalytics,
+  computeDocumentDownloads,
 } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +61,7 @@ export default async function AnalyticsPage({
   const activeQuiz = quizzes.find((q) => q.id === activeQuizId) ?? quizzes[0];
 
   const report = await computeAnalytics(profile.workspace_id, activeQuiz.id);
+  const downloads = await computeDocumentDownloads(profile.workspace_id, 30);
 
   return (
     <AdminShell profile={profile}>
@@ -218,21 +220,118 @@ export default async function AnalyticsPage({
           </div>
         )}
       </section>
+
+      {/* ============ Document downloads (workspace-wide) ============ */}
+      <section className="mt-12 border-t border-border pt-10">
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-foreground">Document downloads</h2>
+          <p className="mt-1 text-sm text-muted">
+            Workspace-wide over the last {downloads.windowDays} days. Free downloads are
+            anonymous (no lead captured); gated downloads are tied to a lead.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatCard label="Total downloads" value={downloads.totalDownloads} accent />
+          <StatCard
+            label="Free (anonymous)"
+            value={downloads.totalAnonymous}
+            subtle="no email captured"
+          />
+          <StatCard
+            label="Gated (identified)"
+            value={downloads.totalGated}
+            subtle="lead captured"
+          />
+        </div>
+
+        {downloads.byDocument.length === 0 ? (
+          <div className="mt-6 rounded-lg border border-dashed border-border bg-background p-8 text-center">
+            <p className="text-sm text-muted">
+              No downloads yet in this window. Share a document link to get started.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            {/* By document */}
+            <div className="overflow-hidden rounded-lg border border-border bg-background">
+              <div className="border-b border-border bg-border/30 px-4 py-3">
+                <h3 className="text-sm font-semibold text-foreground">By document</h3>
+              </div>
+              <table className="min-w-full divide-y divide-border">
+                <thead>
+                  <tr>
+                    <Th>Document</Th>
+                    <Th>Total</Th>
+                    <Th>Free</Th>
+                    <Th>Gated</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {downloads.byDocument.map((d) => (
+                    <tr key={d.document_id}>
+                      <Td>
+                        <span className="text-sm font-medium text-foreground">
+                          {d.title}
+                        </span>
+                      </Td>
+                      <Td>
+                        <span className="text-sm font-semibold text-foreground">
+                          {d.total}
+                        </span>
+                      </Td>
+                      <Td>
+                        <span className="text-sm text-muted">{d.anonymous}</span>
+                      </Td>
+                      <Td>
+                        <span className="text-sm text-muted">{d.gated}</span>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* By source */}
+            <div className="overflow-hidden rounded-lg border border-border bg-background">
+              <div className="border-b border-border bg-border/30 px-4 py-3">
+                <h3 className="text-sm font-semibold text-foreground">By source</h3>
+                <p className="mt-0.5 text-xs text-muted">
+                  From UTM tags or referrer. Tag your share links with{" "}
+                  <code className="rounded bg-border/40 px-1">?utm_source=…</code>
+                </p>
+              </div>
+              <table className="min-w-full divide-y divide-border">
+                <thead>
+                  <tr>
+                    <Th>Source</Th>
+                    <Th>Downloads</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {downloads.bySource.map((s) => (
+                    <tr key={s.source}>
+                      <Td>
+                        <span className="text-sm font-medium text-foreground">
+                          {s.source}
+                        </span>
+                      </Td>
+                      <Td>
+                        <span className="text-sm font-semibold text-foreground">
+                          {s.count}
+                        </span>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </section>
     </AdminShell>
   );
 }
-
-function StatCard({
-  label,
-  value,
-  subtle,
-  accent,
-}: {
-  label: string;
-  value: number | string;
-  subtle?: string;
-  accent?: boolean;
-}) {
   return (
     <div className="rounded-lg border border-border bg-background p-5">
       <p className="text-xs font-medium uppercase tracking-widest text-muted">{label}</p>

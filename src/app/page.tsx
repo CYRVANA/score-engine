@@ -1,18 +1,19 @@
 import Link from "next/link";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { brand } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Public landing page at assess.cyrvana.com.
+ * Public landing page.
  *
- * Lists all published quizzes so prospects can find and start one.
- * Falls back to a single CTA if there's only one published quiz.
+ * Lists all published quizzes. Falls back to a single CTA for one quiz,
+ * a card grid for multiple, a "coming soon" stub for zero.
+ * All brand strings come from env vars via brand config — never hardcoded.
  */
 export default async function HomePage() {
   const supabase = createServiceRoleClient();
 
-  // Load all published quizzes for the CYRVANA workspace.
   const { data: quizzes } = await supabase
     .from("quizzes")
     .select("id, title, slug, description")
@@ -23,7 +24,6 @@ export default async function HomePage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-navy-deep text-white">
-      {/* Atmospheric gradient backdrop */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0"
@@ -39,28 +39,29 @@ export default async function HomePage() {
           <div className="flex items-center gap-2">
             <span className="inline-block h-2 w-2 rounded-full bg-brand" />
             <span className="text-sm font-semibold uppercase tracking-widest text-white/80">
-              CYRVANA Assessments
+              {brand.name}
             </span>
           </div>
-          <a
-            href="https://cyrvana.com"
-            className="text-xs text-white/40 transition hover:text-white/70"
-          >
-            cyrvana.com →
-          </a>
+          {brand.websiteUrl && (
+            <a
+              href={brand.websiteUrl}
+              className="text-xs text-white/40 transition hover:text-white/70"
+            >
+              {brand.websiteUrl.replace(/^https?:\/\//, "")} →
+            </a>
+          )}
         </header>
 
         {/* Hero */}
         <section className="flex flex-1 flex-col justify-center py-20">
           <p className="mb-6 text-sm font-medium uppercase tracking-[0.2em] text-brand">
-            CYRVANA · Free Assessment
+            Free Assessment
           </p>
           <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] sm:text-6xl lg:text-7xl">
-            Know your risk. <span className="text-brand">Start the conversation.</span>
+            <span className="text-brand">{brand.tagline}</span>
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/70 sm:text-xl">
-            Take a free cybersecurity assessment built by CYRVANA's vCISO team.
-            Get a scored result and a personalized analysis — in under five minutes.
+            Take a free assessment and get a personalized analysis — in under five minutes.
           </p>
 
           {published.length === 1 && (
@@ -79,9 +80,7 @@ export default async function HomePage() {
           )}
 
           {published.length === 0 && (
-            <div className="mt-10">
-              <p className="text-sm text-white/40">Assessments coming soon.</p>
-            </div>
+            <p className="mt-10 text-sm text-white/40">Assessments coming soon.</p>
           )}
         </section>
 
@@ -125,19 +124,21 @@ export default async function HomePage() {
 
         {/* Footer */}
         <footer className="mt-auto flex flex-col gap-2 border-t border-white/10 pt-6 text-xs text-white/40 sm:flex-row sm:items-center sm:justify-between">
-          <span>&copy; {new Date().getFullYear()} CYRVANA. All rights reserved.</span>
-          <span>
-            <a href="https://cyrvana.com/privacy" className="underline hover:text-white/70">
-              Privacy
-            </a>
-            {" · "}
-            <a href="https://cyrvana.com" className="hover:text-white/70">
-              cyrvana.com
-            </a>
+          <span>&copy; {new Date().getFullYear()} {brand.name}. All rights reserved.</span>
+          <span className="flex items-center gap-3">
+            {brand.privacyUrl && (
+              <a href={brand.privacyUrl} className="underline hover:text-white/70">
+                Privacy
+              </a>
+            )}
+            {brand.websiteUrl && (
+              <a href={brand.websiteUrl} className="hover:text-white/70">
+                {brand.websiteUrl.replace(/^https?:\/\//, "")}
+              </a>
+            )}
           </span>
         </footer>
       </div>
     </main>
   );
 }
-

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { isAiNarrativesEnabled } from "@/lib/feature-flags";
 import { NarrativeLoader } from "./NarrativeLoader";
+import { DocumentDownloads } from "./DocumentDownloads";
+import { brand } from "@/lib/brand";
 
 // Force dynamic — each session is unique, no point caching.
 export const dynamic = "force-dynamic";
@@ -46,6 +48,7 @@ export default async function ResultsPage({
       id,
       score,
       completed_at,
+      lead_id,
       quizzes:quiz_id (
         id,
         slug,
@@ -115,7 +118,7 @@ export default async function ResultsPage({
         {/* Hero — quiz title */}
         <header className="text-center">
           <p className="mb-3 text-sm font-medium uppercase tracking-widest text-brand">
-            Your CYRVANA Assessment Result
+            Your Assessment Result
           </p>
           <h1 className="text-3xl font-bold leading-tight text-foreground sm:text-4xl">
             {quiz.title}
@@ -173,6 +176,12 @@ export default async function ResultsPage({
           <NarrativeLoader sessionId={session.id} />
         )}
 
+        {/* Document downloads — auto-granted on lead capture for this tier */}
+        <DocumentDownloads
+          sessionId={session.id}
+          leadId={session.lead_id ?? null}
+        />
+
         {/* Answer breakdown */}
         {sortedAnswers.length > 0 && (
           <section className="mt-12">
@@ -217,11 +226,13 @@ export default async function ResultsPage({
             Take it again
             <span aria-hidden="true">→</span>
           </Link>
-          <p className="mt-4 text-xs text-muted">
-            <Link href="https://cyrvana.com" className="hover:text-foreground">
-              cyrvana.com
-            </Link>
-          </p>
+          {brand.websiteUrl && (
+            <p className="mt-4 text-xs text-muted">
+              <Link href={brand.websiteUrl} className="hover:text-foreground">
+                {brand.websiteUrl.replace(/^https?:\/\//, "")}
+              </Link>
+            </p>
+          )}
         </footer>
       </div>
     </div>
