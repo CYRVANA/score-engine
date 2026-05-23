@@ -76,7 +76,6 @@ export async function GET(
       utm_source: searchParams.get("utm_source"),
       utm_medium: searchParams.get("utm_medium"),
       utm_campaign: searchParams.get("utm_campaign"),
-      user_agent: request.headers.get("user-agent"),
     });
   } catch (logErr) {
     console.error("[download] failed to log event", logErr);
