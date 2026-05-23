@@ -227,7 +227,7 @@ export async function captureLead(input: LeadCaptureInput): Promise<CaptureResul
       `
       id, quiz_id, completed_at, score,
       quizzes:quiz_id ( title, slug ),
-      result_tiers:result_tier_id ( title )
+      result_tiers:result_tier_id ( id, title )
     `,
     )
     .eq("id", input.session_id)
