@@ -332,6 +332,18 @@ export default async function AnalyticsPage({
     </AdminShell>
   );
 }
+
+function StatCard({
+  label,
+  value,
+  subtle,
+  accent,
+}: {
+  label: string;
+  value: number | string;
+  subtle?: string;
+  accent?: boolean;
+}) {
   return (
     <div className="rounded-lg border border-border bg-background p-5">
       <p className="text-xs font-medium uppercase tracking-widest text-muted">{label}</p>
