@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { AdminShell } from "@/components/AdminShell";
 import { brand } from "@/lib/brand";
 import { DocumentUploadForm } from "./DocumentUploadForm";
+import { DeleteDocumentButton } from "./DeleteDocumentButton";
 import { setDocumentActive, deleteDocument } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -163,24 +164,13 @@ export default async function DocumentsPage() {
                           </form>
 
                           {downloadCount === 0 && (
-                            <form
-                              action={async () => {
+                            <DeleteDocumentButton
+                              title={doc.title}
+                              onDelete={async () => {
                                 "use server";
                                 await deleteDocument(doc.id);
                               }}
-                            >
-                              <button
-                                type="submit"
-                                className="rounded-md border border-red-200 bg-background px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                                onClick={(e) => {
-                                  if (!confirm(`Delete "${doc.title}"? This cannot be undone.`)) {
-                                    e.preventDefault();
-                                  }
-                                }}
-                              >
-                                Delete
-                              </button>
-                            </form>
+                            />
                           )}
                         </div>
                       </Td>
