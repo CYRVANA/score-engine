@@ -32,6 +32,7 @@ type RawTier = {
   description: string | null;
   cta_label: string | null;
   cta_url: string | null;
+  tier_documents: Array<{ document_id: string }> | null;
 };
 
 /**
@@ -60,7 +61,7 @@ export default async function QuizDetailPage({ params }: { params: RouteParams }
       archived_at,
       created_at,
       questions ( id, order_index, type, prompt, weight, options ),
-      result_tiers ( id, min_score, max_score, title, description, cta_label, cta_url )
+      result_tiers ( id, min_score, max_score, title, description, cta_label, cta_url, tier_documents ( document_id ) )
     `,
     )
     .eq("id", id)
@@ -90,8 +91,23 @@ export default async function QuizDetailPage({ params }: { params: RouteParams }
       description: t.description,
       cta_label: t.cta_label,
       cta_url: t.cta_url,
+      attached_document_ids: (t.tier_documents ?? []).map((td) => td.document_id),
     }))
     .sort((a, b) => a.min_score - b.min_score);
+
+  // Load all active documents in the workspace for the tier attachment picker.
+  const { data: docsData } = await supabase
+    .from("documents")
+    .select("id, title, access_level")
+    .eq("workspace_id", profile.workspace_id)
+    .eq("is_active", true)
+    .order("title", { ascending: true });
+
+  const availableDocuments = (docsData ?? []).map((d) => ({
+    id: d.id,
+    title: d.title,
+    access_level: d.access_level,
+  }));
 
   // Coverage box reads tiers as { min, max, title }; passing the trimmed shape.
   const coverageTiers: CoverageTier[] = tiers.map((t) => ({
@@ -171,7 +187,7 @@ export default async function QuizDetailPage({ params }: { params: RouteParams }
 
       {/* Tiers */}
       <div className="mt-10">
-        <TiersManager quizId={quiz.id} initialTiers={tiers} />
+        <TiersManager quizId={quiz.id} initialTiers={tiers} availableDocuments={availableDocuments} />
       </div>
     </AdminShell>
   );
