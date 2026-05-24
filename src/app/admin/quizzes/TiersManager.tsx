@@ -2,16 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { TierEditor, type TierForEdit } from "./TierEditor";
+import { TierEditor, type TierForEdit, type AvailableDocument } from "./TierEditor";
 import { addTier } from "./actions";
 
 export function TiersManager({
   quizId,
   initialTiers,
+  availableDocuments,
   onTiersChange,
 }: {
   quizId: string;
   initialTiers: TierForEdit[];
+  availableDocuments: AvailableDocument[];
   onTiersChange?: (tiers: { min_score: number; max_score: number; title: string }[]) => void;
 }) {
   const router = useRouter();
@@ -110,6 +112,7 @@ export function TiersManager({
               key={t.id}
               quizId={quizId}
               tier={t}
+              availableDocuments={availableDocuments}
               onLocalChange={handleLocalTierChange}
             />
           ))}

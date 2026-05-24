@@ -3,6 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateTier, deleteTier, type TierInput } from "./actions";
+import { attachDocumentToTier, detachDocumentFromTier } from "../documents/actions";
+
+export type AvailableDocument = {
+  id: string;
+  title: string;
+  access_level: string;
+};
 
 export type TierForEdit = {
   id: string;
@@ -12,6 +19,7 @@ export type TierForEdit = {
   description: string | null;
   cta_label: string | null;
   cta_url: string | null;
+  attached_document_ids: string[];
 };
 
 type EditState = {
@@ -48,10 +56,12 @@ function isDirty(orig: TierForEdit, draft: EditState): boolean {
 export function TierEditor({
   quizId,
   tier,
+  availableDocuments,
   onLocalChange,
 }: {
   quizId: string;
   tier: TierForEdit;
+  availableDocuments: AvailableDocument[];
   onLocalChange: (
     tid: string,
     range: { min_score: number; max_score: number; title: string },
@@ -62,6 +72,12 @@ export function TierEditor({
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [docPending, startDocTransition] = useTransition();
+
+  // Local view of which documents are attached, for optimistic toggling.
+  const [attachedIds, setAttachedIds] = useState<string[]>(
+    tier.attached_document_ids ?? [],
+  );
 
   const dirty = isDirty(tier, draft);
 
@@ -108,6 +124,32 @@ export function TierEditor({
       const result = await deleteTier(quizId, tier.id);
       if (!result.ok) setError(result.error);
       else router.refresh();
+    });
+  }
+
+  function toggleDocument(documentId: string, currentlyAttached: boolean) {
+    setError(null);
+    // Optimistic update.
+    setAttachedIds((prev) =>
+      currentlyAttached
+        ? prev.filter((id) => id !== documentId)
+        : [...prev, documentId],
+    );
+    startDocTransition(async () => {
+      const result = currentlyAttached
+        ? await detachDocumentFromTier(tier.id, documentId)
+        : await attachDocumentToTier(tier.id, documentId);
+      if (!result.ok) {
+        // Roll back on failure.
+        setAttachedIds((prev) =>
+          currentlyAttached
+            ? [...prev, documentId]
+            : prev.filter((id) => id !== documentId),
+        );
+        setError(result.error);
+      } else {
+        router.refresh();
+      }
     });
   }
 
@@ -200,6 +242,51 @@ export function TierEditor({
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-base text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:opacity-60"
             />
           </Field>
+        </div>
+
+        {/* Document attachments */}
+        <div className="border-t border-border pt-4">
+          <p className="mb-1 text-sm font-semibold text-foreground">Documents</p>
+          <p className="mb-3 text-xs text-muted">
+            Prospects who land in this tier are automatically granted these documents
+            on their results page. Changes save immediately.
+          </p>
+          {availableDocuments.length === 0 ? (
+            <p className="rounded-md border border-dashed border-border bg-background px-3 py-3 text-xs text-muted">
+              No documents yet. Upload PDFs in the Documents section, then attach them here.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {availableDocuments.map((doc) => {
+                const isAttached = attachedIds.includes(doc.id);
+                return (
+                  <li key={doc.id} className="flex items-center gap-3">
+                    <input
+                      id={`doc-${tier.id}-${doc.id}`}
+                      type="checkbox"
+                      checked={isAttached}
+                      disabled={docPending}
+                      onChange={() => toggleDocument(doc.id, isAttached)}
+                      className="h-4 w-4 rounded border-border accent-brand disabled:opacity-60"
+                    />
+                    <label
+                      htmlFor={`doc-${tier.id}-${doc.id}`}
+                      className="flex flex-1 items-center gap-2 text-sm text-foreground"
+                    >
+                      <span>{doc.title}</span>
+                      <span className="rounded-full bg-border/40 px-2 py-0.5 text-xs text-muted">
+                        {doc.access_level === "public"
+                          ? "Free"
+                          : doc.access_level === "email_gated"
+                            ? "Gated"
+                            : doc.access_level}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       </div>
 
