@@ -772,9 +772,9 @@ function isEmailEnabled(): boolean {
 
 function buildSubject(ctx: SessionContext): string {
   if (ctx.tier_title) {
-    return `Your ${ctx.quiz_title}: ${ctx.tier_title}`;
+    return `Your results: "${ctx.quiz_title}" — ${ctx.tier_title}`;
   }
-  return `Your ${ctx.quiz_title} results`;
+  return `Your results: "${ctx.quiz_title}"`;
 }
 
 function buildResultsPageUrl(
