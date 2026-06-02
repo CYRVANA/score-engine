@@ -2,7 +2,8 @@ import Link from "next/link";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { brand } from "@/lib/brand";
 
-export const dynamic = "force-dynamic";
+//export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 /**
  * Public landing page.
